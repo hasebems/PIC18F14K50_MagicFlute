@@ -516,7 +516,6 @@ void USBDeviceTasks(void)
     //  bus by calling the USBDeviceAttach() and USBDeviceDetach() functions.
     if (USB_BUS_SENSE != 1)
     {
-        //  ここには来ない
         // Disable module & detach from bus
          U1CON = 0;             
 
@@ -578,7 +577,6 @@ void USBDeviceTasks(void)
     //if we are in the detached state
     if(USBDeviceState == DETACHED_STATE)
     {
-	// ここには来ない
         //Initialize register to known value
         U1CON = 0;                          
 
@@ -638,7 +636,7 @@ void USBDeviceTasks(void)
     /*
      * Task A: Service USB Activity Interrupt
      */
-    if(USBActivityIF && USBActivityIE)  // ここには来ない
+    if(USBActivityIF && USBActivityIE)
     {
         USBClearInterruptFlag(USBActivityIFReg,USBActivityIFBitNum);
         #if defined(USB_SUPPORT_OTG)
@@ -651,7 +649,7 @@ void USBDeviceTasks(void)
     /*
      * Pointless to continue servicing if the device is in suspend mode.
      */
-    if(USBSuspendControl==1)  // ここには来ない
+    if(USBSuspendControl==1)
     {
         USBClearUSBInterrupt();
         return;
@@ -667,7 +665,7 @@ void USBDeviceTasks(void)
      * DETACHED_STATE or ATTACHED_STATE, and therefore cannot
      * cause a USB reset event during these two states.
      */
-    if(USBResetIF && USBResetIE)  // ここには来ない
+    if(USBResetIF && USBResetIE)
     {
         USBDeviceInit();
 
@@ -691,7 +689,7 @@ void USBDeviceTasks(void)
     /*
      * Task C: Service other USB interrupts
      */
-    if(USBIdleIF && USBIdleIE)  // ここには来ない
+    if(USBIdleIF && USBIdleIE)
     {
         #ifdef  USB_SUPPORT_OTG 
             //If Suspended, Try to switch to Host
@@ -703,9 +701,9 @@ void USBDeviceTasks(void)
         USBClearInterruptFlag(USBIdleIFReg,USBIdleIFBitNum);
     }
 
-    if(USBSOFIF)    //  ここに来る
+    if(USBSOFIF)
     {
-        if(USBSOFIE)    //  ここに来る
+        if(USBSOFIE)
         {
             USB_SOF_HANDLER(EVENT_SOF,0,1);
         }    
@@ -750,12 +748,12 @@ void USBDeviceTasks(void)
         #endif
     }
 
-    if(USBStallIF && USBStallIE)  // ここには来ない
+    if(USBStallIF && USBStallIE)
     {
         USBStallHandler();
     }
 
-    if(USBErrorIF && USBErrorIE)  // ここには来ない
+    if(USBErrorIF && USBErrorIE)
     {
         USB_ERROR_HANDLER(EVENT_BUS_ERROR,0,1);
         USBClearInterruptRegister(U1EIR);               // This clears UERRIF
@@ -773,7 +771,7 @@ void USBDeviceTasks(void)
      * Once bus reset is received, the device transitions into the DEFAULT
      * state and is ready for communication.
      */
-    if(USBDeviceState < DEFAULT_STATE)  // ここには来ない
+    if(USBDeviceState < DEFAULT_STATE)
     {
         USBClearUSBInterrupt();
         return;
@@ -782,11 +780,11 @@ void USBDeviceTasks(void)
     /*
      * Task D: Servicing USB Transaction Complete Interrupt
      */
-    if(USBTransactionCompleteIE)   // 常に来る
+    if(USBTransactionCompleteIE)
     {
         for(i = 0; i < 4u; i++)	//Drain or deplete the USAT FIFO entries.  If the USB FIFO ever gets full, USB bandwidth
         {						//utilization can be compromised, and the device won't be able to receive SETUP packets.
-            if(USBTransactionCompleteIF)    //  ここに来る
+            if(USBTransactionCompleteIF)
             {
                 //Save and extract USTAT register info.  Will use this info later.
                 USTATcopy.Val = U1STAT;
@@ -810,11 +808,11 @@ void USBDeviceTasks(void)
                 //USBCtrlEPService only services transactions over EP0.
                 //It ignores all other EP transactions.
                 if(endpoint_number == 0)
-                {  // ここには来ない
+                {
                     USBCtrlEPService();
                 }
                 else
-                {    //  ここに来る
+                {
                     USB_TRANSFER_COMPLETE_HANDLER(EVENT_TRANSFER, (uint8_t*)&USTATcopy.Val, 0);
                 }
             }//end if(USBTransactionCompleteIF)

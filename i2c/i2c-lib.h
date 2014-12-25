@@ -5,6 +5,8 @@
 #ifndef LCD_I2C_LIB_H
 #define	LCD_I2C_LIB_H
 
+#include <xc.h>
+
 #ifdef	__cplusplus
 extern "C" {
 #endif

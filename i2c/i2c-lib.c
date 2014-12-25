@@ -10,7 +10,7 @@
 
 #ifndef _XTAL_FREQ
     /* 例：4MHzの場合、4000000 をセットする */
-    #define _XTAL_FREQ 20000000
+    #define _XTAL_FREQ 48000000
 #endif
 
 // I2Cバスを有効化
@@ -19,6 +19,7 @@ void i2c_enable(void)
     SSPSTAT = 0b00000000;      // I2C 400kHz
     SSPADD = 29;               // I2Cバス Baud rate,  48MHz/((SSP1ADD + 1)*4) = 400kHz
     SSPCON1 = 0b00101000;      // I2C有効, Master Mode
+	SSPCON2 = 0x00;
 }
 
 // I2Cバスを無効化

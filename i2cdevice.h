@@ -15,7 +15,13 @@ extern "C" {
 void initI2c( void );
 
 void LPS331AP_init( void );
-short LPS331AP_getPressure( void );
+float LPS331AP_getPressure( void );
+
+void MPR121_init( void );
+unsigned char MPR121_getTchSwData( void );
+
+void ADXL345_init( void );
+void ADXL345_getAccel( signed short* value );
 
 void BlinkM_init( void );
 void BlinkM_changeColor( unsigned char note );

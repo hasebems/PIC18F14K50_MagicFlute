@@ -100,7 +100,6 @@ void readI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char* data,
 	i2c_stop();
 }
 
-
 //-------------------------------------------------------------------------
 //			LPS331AP (Pressure Sencer : I2c Device)
 //-------------------------------------------------------------------------
@@ -119,31 +118,21 @@ void readI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char* data,
 void LPS331AP_init( void )
 {
 	//	Init Parameter
-	writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_PWRON, 0x80 );	//	Power On
-	writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_RESOLUTION, 0x7A );	//	Resolution
-	//	Pressure Sencer
-	writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_START, PRES_SNCR_ONE_SHOT );	//	Start One shot
+	writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_RESOLUTION, 0x6A );	//	Resolution
+	writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_PWRON, 0xf0 );	//	Power On
 }
 //-------------------------------------------------------------------------
-short LPS331AP_getPressure( void )
+float LPS331AP_getPressure( void )
 {
-	unsigned char rdDt, dt[3];
-	short	  prsData = 0;	//	can not get a value
+	unsigned char	dt[3];
+	float	tmpPrs = 0;
 
-	readI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_RCV_DT_FLG, &rdDt, 1 );
-	if ( rdDt & PRES_SNCR_RCV_PRES ){
-		readI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_DT_L, &dt[0], 1 );
-		readI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_DT_M, &dt[1], 1 );
-		readI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_DT_H, &dt[2], 1 );
+	readI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_DT_L|0x80, dt, 3 );
+	tmpPrs += dt[1];
+	tmpPrs += dt[2] << 8;
+	tmpPrs /= 16.0;
 
-		prsData = (dt[2]<<8)|dt[1];
-		prsData = prsData*10/16;
-
-		//	Pressure Sencer
-		writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_START, PRES_SNCR_ONE_SHOT );	//	Start One shot
-	}
-	
-	return prsData;	//	10 times of Pressure(hPa)
+	return tmpPrs;
 }
 
 //-------------------------------------------------------------------------
@@ -165,29 +154,14 @@ short LPS331AP_getPressure( void )
 #define		E_THR_R      0x01	// Electrode release threshold
 #define		PROX_THR_T   0x02	// Prox touch threshold
 #define		PROX_THR_R   0x02	// Prox release threshold
-#if 0
 //-------------------------------------------------------------------------
-void accessMPR121( void )
-{
-//	int		address = TOUCH_SENSOR_ADDRESS;  // I2C
-
-	// Set Address
-//	if (ioctl(i2cDscript, I2CSLAVE_, address) < 0){
-//		printf("Unable to get bus access to talk to slave(TOUCH)\n");
-//		exit(1);
-//	}
-}
-//-------------------------------------------------------------------------
-void initMPR121( void )
+void MPR121_init( void )
 {
 	int	i, j;
 
-	//	Start Access
-	accessMPR121();
-
 	//	Init Parameter
 	// Put the MPR into setup mode
-    writeI2c(TCH_SNCR_ELE_CFG,0x00);
+	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_ELE_CFG, 0x00 );
 
     // Electrode filters for when data is > baseline
     unsigned char gtBaseline[] = {
@@ -196,7 +170,9 @@ void initMPR121( void )
 		0x00,  //NCL_R
 		0x00   //FDL_R
 	};
-	for ( i=0; i<4; i++ ) writeI2c(TCH_SNCR_MHD_R+i,gtBaseline[i]);
+	for ( i=0; i<4; i++ )
+		writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_MHD_R+i, gtBaseline[i] );
+
 
 	// Electrode filters for when data is < baseline
 	unsigned char ltBaseline[] = {
@@ -205,7 +181,8 @@ void initMPR121( void )
         0xFF,   //NCL_F
         0x02    //FDL_F
 	};
-	for ( i=0; i<4; i++ ) writeI2c(TCH_SNCR_MHD_F+i,ltBaseline[i]);
+	for ( i=0; i<4; i++ )
+		writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_MHD_F+i, ltBaseline[i] );
 
     // Electrode touch and release thresholds
     unsigned char electrodeThresholds[] = {
@@ -215,7 +192,7 @@ void initMPR121( void )
 
     for( j=0; j<12; j++ ){
 		for ( i=0; i<2; i++ ){
-        	writeI2c(TCH_SNCR_ELE0_T+(j*2)+i,electrodeThresholds[i]);
+			writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_ELE0_T+(j*2)+i, electrodeThresholds[i] );
     	}
 	}
 
@@ -233,82 +210,66 @@ void initMPR121( void )
         0x00,   //NCL_Prox_T
         0x00    //NFD_Prox_T
 	};
-    for ( i=0; i<11; i++ ) writeI2c(TCH_SNCR_MHDPROXR+i,proximitySettings[i]);
+    for ( i=0; i<11; i++ )
+		writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_MHDPROXR+i, proximitySettings[i] );
 
     unsigned char proxThresh[] = {
         PROX_THR_T, // Touch Threshold
         PROX_THR_R  // Release Threshold
 	};
-    for ( i=0; i<2; i++ ) writeI2c(TCH_SNCR_EPROXTTH+i,proxThresh[i]);
+    for ( i=0; i<2; i++ )
+		writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_EPROXTTH+i, proxThresh[i] );
 
-    writeI2c(TCH_SNCR_FIL_CFG,0x04);
+	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_FIL_CFG, 0x04 );
 
     // Set the electrode config to transition to active mode
-    writeI2c(TCH_SNCR_ELE_CFG,0x0c);
+	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_ELE_CFG, 0x0c );
 }
 //-------------------------------------------------------------------------
-unsigned short getTchSwData( void )
+unsigned char MPR121_getTchSwData( void )
 {
-	unsigned char buf[2] = { 0xff, 0xff };
+	unsigned char buf[2];
 
-	//	Start Access
-	accessMPR121();
+	readI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_TOUCH_STATUS1, buf, 1 );
 
-	if (read(i2cDscript, buf, 2) != 2) {	// Read back data into buf[]
-		printf("Unable to read from slave(Touch)\n");
-		//exit(1);
-		return 0xffff;
-	}
-
-	return (buf[1]<<8) | buf[0];
+//	return (buf[1]<<8) | buf[0];
+	return buf[0];
 }
-#endif
 
 //-------------------------------------------------------------------------
 //			ADXL345 (Acceleration Sencer : I2c Device)
 //-------------------------------------------------------------------------
-#if 0
 //	for Acceleration Sencer
 #define ACCEL_SNCR_PWR_CTRL			0x2d
 #define ACCEL_SNCR_DATA_FORMAT		0x31
 //-------------------------------------------------------------------------
-void accessADXL345( void )
-{
-	int		address = ACCEL_SENSOR_ADDRESS;  // I2C
-
-	// Set Address
-	if (ioctl(i2cDscript, I2CSLAVE_, address) < 0){
-		printf("Unable to get bus access to talk to slave(ACCEL)\n");
-		exit(1);
-	}
-}
-//-------------------------------------------------------------------------
-void initADXL345( void )
+void ADXL345_init( void )
 {
 	//	Start Access
-	accessADXL345();
-	writeI2c(ACCEL_SNCR_PWR_CTRL,0x08);			//	Start Measurement
-	writeI2c(ACCEL_SNCR_DATA_FORMAT,0x04);		//	Left Justified
+	writeI2cWithCmd(ACCEL_SENSOR_ADDRESS,ACCEL_SNCR_PWR_CTRL,0x08);			//	Start Measurement
+	writeI2cWithCmd(ACCEL_SENSOR_ADDRESS,ACCEL_SNCR_DATA_FORMAT,0x04);		//	Left Justified
 }
 //-------------------------------------------------------------------------
-void getAccel( signed short* value )
+void ADXL345_getAccel( signed short* value )
 {
 	unsigned short tmp;
+	unsigned char reg[2];
 
-	accessADXL345();
-	tmp = readI2c(0x32);
-	tmp |= readI2c(0x33) << 8;
+	readI2cWithCmd(ACCEL_SENSOR_ADDRESS,0x32,reg,2);
+	tmp = reg[0];
+	tmp |= reg[1] << 8;
 	*value = (signed short)tmp;
 
-	tmp = readI2c(0x34);
-	tmp |= readI2c(0x35) << 8;
+	readI2cWithCmd(ACCEL_SENSOR_ADDRESS,0x34,reg,2);
+	tmp = reg[0];
+	tmp |= reg[1] << 8;
 	*(value+1) = (signed short)tmp;
 
-	tmp = readI2c(0x36);
-	tmp |= readI2c(0x37) << 8;
+	readI2cWithCmd(ACCEL_SENSOR_ADDRESS,0x36,reg,2);
+	tmp = reg[0];
+	tmp |= reg[1] << 8;
 	*(value+2) = (signed short)tmp;
 }
-#endif
 
 //-------------------------------------------------------------------------
 //			BlinkM ( Full Color LED : I2c Device)
