@@ -13,7 +13,7 @@
 #include    "system.h"
 
 extern void AnalysePressure_Init( void );
-extern void AnalysePressure_setNewRawPressure( float prs );
+extern void AnalysePressure_setNewRawPressure( int prs );
 extern bool AnalysePressure_catchEventOfPeriodic( uint8_t* midiValue );
 
 #if 0

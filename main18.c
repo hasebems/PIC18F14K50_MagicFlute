@@ -80,7 +80,9 @@
 
 #define	SW1         PORTCbits.RC7
 #define	LED         PORTCbits.RC6
+#define	LED2         PORTCbits.RC5
 
+bool	dbg;
 
 /*----------------------------------------------------------------------------*/
 //
@@ -96,9 +98,6 @@ static USB_HANDLE USBRxHandle;
 static uint8_t pitch;
 static bool sentNoteOff;
 
-static uint16_t masterCounter;
-static long			loopCnt;
-
 #define	MIDI_BUF_MAX		8
 #define	MIDI_BUF_MAX_MASK	0x07;
 static uint8_t	midiEvent[MIDI_BUF_MAX][3];
@@ -107,7 +106,11 @@ static int	midiEventWritePointer;
 
 static bool nowPlaying;
 static uint8_t crntNote;
-static uint8_t lastMod;
+static uint8_t lastMod, lastPrt;
+
+static long			counter10msec;	//	one loop 243 days
+static bool	event10msec, event100msec, event350msec;
+static uint16_t timerStock;
 
 /*----------------------------------------------------------------------------*/
 //
@@ -121,9 +124,76 @@ void initCommon( void )
 	nowPlaying = false;
 	crntNote = 96;
 	lastMod = 0;
+	lastPrt = 0;
+
+	dbg = false;
 
 	AnalysePressure_Init();
 	AnalyseTouch_init();
+}
+
+/*----------------------------------------------------------------------------*/
+//
+//      Init I2C Hardware
+//
+/*----------------------------------------------------------------------------*/
+void initAllI2cHw( void )
+{
+	initI2c();
+	LPS331AP_init();
+	MPR121_init();
+//	BlinkM_init();
+	ADXL345_init();
+}
+
+/*----------------------------------------------------------------------------*/
+//
+//      Initialize
+//
+/*----------------------------------------------------------------------------*/
+void initMain(void)
+{
+	int		i;
+
+	//	PIC H/W registor
+	//    ADCON1  =	0b00001111;
+    TRISA   =	0b00000000;			//D-,D+
+    TRISB   =	0b01010000;			//I2C master mode
+    TRISC   =	0b10000000;			//SW1
+
+	ANSEL	=	0b00000000;			//not use ADC. use PORT
+	ANSELH	=	0b00000000;
+
+	T0CON	=	0b10010111;			// 1:256 of System Clock
+									//	 48/4MHz -> 46875Hz 21.333..usec
+	INTCON	=	0b00000000;
+
+//    LATA    =	0b00000000;
+//    LATB    =	0b00000000;
+//    LATC    =	0b01000000;
+
+	TMR0H	= 0;					//	set TImer0
+	TMR0L	= 0;
+	LED		= 0;
+	LED2	= 0;
+
+	//	Initialize Variables only when the power turns on
+	for ( i=0; i<MIDI_BUF_MAX; i++ ){
+		midiEvent[i][0] = 0;
+		midiEvent[i][1] = 0;
+		midiEvent[i][2] = 0;
+	}
+	counter10msec = 0;
+	event10msec = false;
+	event100msec = false;
+	event350msec = false;
+	timerStock = 0;
+
+	//	Iitialize other H/W
+	initAllI2cHw();
+
+	//	common Initialize
+	initCommon();
 }
 
 /*********************************************************************
@@ -145,7 +215,6 @@ void USBMIDIInitialize()
 
     pitch = 0x3C;
     sentNoteOff = true;
-	masterCounter = 0;
 
 	initCommon();
 
@@ -224,46 +293,38 @@ bool USER_USB_CALLBACK_EVENT_HANDLER(USB_EVENT event, void *pdata, uint16_t size
 
 /*----------------------------------------------------------------------------*/
 //
-//      Initialize
+//      Generate Counter
 //
 /*----------------------------------------------------------------------------*/
-void initMain(void)
+void generateCounter( void )
 {
-	int		i;
+	uint16_t tmr;
 
-	//    ADCON1  =	0b00001111;
-    TRISA   =	0b00000000;			//D-,D+
-    TRISB   =	0b01010000;			//I2C master mode
-    TRISC   =	0b10000000;			//SW1
+	//	Make Master Counter
+	tmr = (uint16_t)TMR0L;
+	tmr |= (uint16_t)(TMR0H << 8);
 
-	ANSEL	=	0b00000000;
-	ANSELH	=	0b00000000;
-
-	T0CON	=	0b10010111;
-
-//    LATA    =	0b00000000;
-//    LATB    =	0b00000000;
-//    LATC    =	0b01000000;
-
-	TMR0H	= 0;
-	TMR0L	= 0;
-	LED		= 0;
-
-	for ( i=0; i<MIDI_BUF_MAX; i++ ){
-		midiEvent[i][0] = 0;
-		midiEvent[i][1] = 0;
-		midiEvent[i][2] = 0;
+	//	Generate Timer Event
+	if (( tmr & 0x0100 ) && !( timerStock & 0x0100 )){
+		//	10msec Event ( precise time : 10.92msec )
+		event10msec = true;
+		counter10msec++;
 	}
-	loopCnt = 0;
+	else event10msec = false;
 
-	//	Iitialize H/W
-	initI2c();
-	LPS331AP_init();
-	MPR121_init();
-	BlinkM_init();
-	ADXL345_init();
+	if (( tmr & 0x0800 ) && !( timerStock & 0x0800 )){
+		//	100msec Event ( precise time : 87.37msec )
+		event100msec = true;
+	}
+	else event100msec = false;
 
-	initCommon();
+	if (( tmr & 0x2000 ) && !( timerStock & 0x2000 )){
+		//	350msec Event ( precise time : 349msec )
+		event350msec = true;
+	}
+	else event350msec = false;
+
+	timerStock = tmr;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -292,7 +353,7 @@ void testNoteEvent( void )
         if ( sentNoteOff == true ){
 			setMidiBuffer( 0x90, ++pitch, 0x7f );
             sentNoteOff = false;
-			BlinkM_changeColor(pitch%12);
+			//BlinkM_changeColor(pitch%12);
 		}
     }
     else {
@@ -302,124 +363,108 @@ void testNoteEvent( void )
 				pitch = 0x3C;
             }
             sentNoteOff = true;
-			BlinkM_changeColor(12);
+			//BlinkM_changeColor(12);
 		}
     }
 }
 /*----------------------------------------------------------------------------*/
-void pressureSensor( bool event10msec, bool event100msec)
+void pressureSensor( void )
 {
 	//  Pressure Sensor
-#if 0
-	//	Check Real Air Pressure
-	float prs = LPS331AP_getPressure();
-	if ( event100msec ){
-		if ( prs < 950 ) prs = 950;
-		else if ( prs > 1077 ) prs = 1077;
-		prs -= 950;
-		if ( prs > 127 ) prs = 127;
-		setMidiBuffer(0xb0,0x0b,(uint8_t)prs);	// 0=950hPa...127=1077hPa
+
+	int	prs = LPS331AP_getPressure();
+
+#if 0	//	for debug
+	if ( event350msec == true ){
+		//	350msec
+		setMidiBuffer(0xb0,0x10,prs/10000);
+		setMidiBuffer(0xb0,0x11,(prs%10000)/100);
+		setMidiBuffer(0xb0,0x12,(prs%100));
 	}
-#else
-    float pval = LPS331AP_getPressure();
-	AnalysePressure_setNewRawPressure(pval);
-	if ( event10msec ){
+#endif
+
+	AnalysePressure_setNewRawPressure(prs);
+	if ( event10msec == true ){
 		uint8_t mdExp;
 		if ( AnalysePressure_catchEventOfPeriodic(&mdExp) == true ){
 			if (( mdExp > 0 ) && ( nowPlaying == false )){
 	            setMidiBuffer(0x90,crntNote,0x7f);
 		        nowPlaying = true;
-			    //int doremi = crntNote%12;
-				//ll.color( tColorTableFloat[doremi][0], tColorTableFloat[doremi][1], tColorTableFloat[doremi][2] );
 			}
 			setMidiBuffer(0xb0,0x0b,mdExp);
 		    if (( mdExp == 0 ) && ( nowPlaying == true )){
 			    setMidiBuffer(0x90,crntNote,0);
 				nowPlaying = false;
-			    //ll.color( tColorTableFloat[12][0], tColorTableFloat[12][1], tColorTableFloat[12][2] );
 			}
 		}
     }
-#endif
 }
 /*----------------------------------------------------------------------------*/
-void acceleratorSensor( bool event10msec, bool event100msec )
+#define		MAX_ANGLE		32
+const int tCnvModDpt[MAX_ANGLE] = {
+	0,	0,	0,	0,	0,	0,	0,	0,
+	0,	0,	0,	0,	1,	1,	2,	2,
+	3,	4,	5,	6,	7,	8,	9,	10,
+	12,	14,	16,	19,	22,	25,	28,	31,
+};
+//-------------------------------------------------------------------------
+const int tCnvPrtDpt[MAX_ANGLE] = {
+	0,	0,	0,	0,	0,	0,	0,	0,
+	10,	20,	30,	40,	50,	60,	70,	70,
+	80,	80,	80,	80,	90,	90,	90,	90,
+	100,100,100,100,110,110,110,110,
+};
+//-------------------------------------------------------------------------
+void acceleratorSensor( void )
 {
-	signed short acl[3];
+	signed short acl[3] = { 0,0,0 };
 	ADXL345_getAccel(acl);
     int incli = acl[0]/512;
 
-	if ( event100msec ) setMidiBuffer(0xb0,0x01,incli&0x7f);
+	if ( incli >= MAX_ANGLE ) incli = MAX_ANGLE-1;
 
-	uint8_t crntMod = 0;
-	if ( incli > 256 ){
-        //  Modulation
-        incli -= 512;
-		crntMod = -1*incli;
-		if ( crntMod != lastMod ){
-			setMidiBuffer(0xb0,0x01,crntMod);
-            lastMod = crntMod;
-	   }
-    }
-    else {
-        incli -= 10;
-        if ( incli < 0 ) incli = 0;
-    }
+	uint8_t modVal, prtVal;
+	if ( incli < 0 ){
+		prtVal = incli * (-1);
+		modVal = 0;
+	}
+	else {
+		prtVal = 0;
+		modVal = incli;
+	}
+	
+	//	lessen variation of modulation
+	modVal = tCnvModDpt[modVal];
+	if ( modVal > lastMod ){
+		lastMod++;
+		setMidiBuffer(0xb0,0x01,lastMod);
+	}
+	else if ( modVal < lastMod ){
+		lastMod--;
+		setMidiBuffer(0xb0,0x01,lastMod);
+	}
+
+	prtVal = tCnvPrtDpt[prtVal];
+	if ( prtVal != lastPrt ){
+		lastPrt = prtVal;
+		setMidiBuffer(0xb0,0x05,lastPrt);
+	}
 }
 /*----------------------------------------------------------------------------*/
-void touchSensor( bool event10msec, bool event100msec )
+void touchSensor( void )
 {
 	uint8_t	tch = MPR121_getTchSwData();
 	AnalyseTouch_setNewTouch(tch);
 	if ( event10msec ){
 		uint8_t mdNote;
-		if ( AnalyseTouch_catchEventOfPeriodic(&mdNote,loopCnt) == true ){
+		if ( AnalyseTouch_catchEventOfPeriodic(&mdNote,counter10msec) == true ){
 			if ( nowPlaying == true ){
 				setMidiBuffer(0x90,mdNote,0x7f);
 				setMidiBuffer(0x90,crntNote,0x00);
-		        //int doremi = mdNote%12;
-			    //ll.color( tColorTableFloat[doremi][0], tColorTableFloat[doremi][1], tColorTableFloat[doremi][2] );
 			}
 	        crntNote = mdNote;
 		}
 	}
-}
-
-/*----------------------------------------------------------------------------*/
-//
-//      Make MIDI Event Via Censers
-//
-/*----------------------------------------------------------------------------*/
-static uint16_t		oldCounter;
-/*----------------------------------------------------------------------------*/
-void makeEventFromSensors()
-{
-	bool	event10msec = false, event100msec = false;
-
-	//	Generate Timer Event
-	if (( masterCounter & 0x0100 ) && !( oldCounter & 0x0100 )){
-		//	10msec Event
-		event10msec = true;
-		loopCnt++;	// 243日で一回り
-	}
-	if (( masterCounter & 0x0800 ) && !( oldCounter & 0x0800 )){
-		//	100msec Event
-		event100msec = true;
-	}
-	oldCounter = masterCounter;
-
-
-	//	Test with Tact Swtich
-	testNoteEvent();
-
-	//	Air Pressure Sensor
-	pressureSensor(event10msec,event100msec);
-
-	//  accelerator sensor
-	acceleratorSensor(event10msec,event100msec);
-	
-	//  Touch Sensor
-	touchSensor(event10msec,event100msec);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -442,7 +487,6 @@ void sendEventToUsb( void )
 
 		midiEventReadPointer++;
 		midiEventReadPointer &= MIDI_BUF_MAX_MASK;
-		LED = 1;
 	}
 }
 
@@ -451,9 +495,36 @@ void sendEventToUsb( void )
 //      Full Color LED
 //
 /*----------------------------------------------------------------------------*/
+const unsigned char tColorTable[13][3] = {
+    //  R     G     B
+    { 0xff,  0x00,  0x00  },   //  red		C
+    { 0xd0,  0x30,  0x00  },   //  red		C#
+    { 0xb0,  0x50,  0x00  },   //  orange	D
+    { 0xa0,  0x60,  0x00  },   //  orange	D#
+    { 0x80,  0x80,  0x00  },   //  yellow	E
+    { 0x00,  0xff,  0x00  },   //  green	F
+    { 0x00,  0x80,  0x80  },   //  green	F#
+    { 0x00,  0x00,  0xff  },   //  blue		G
+    { 0x20,  0x00,  0xe0  },   //  blue		G#
+    { 0x40,  0x00,  0xc0  },   //  violet	A
+    { 0x60,  0x00,  0xa0  },   //  violet	A#
+    { 0xc0,  0x00,  0x40  },   //  violet	B
+    { 0x00,  0x00,  0x00  }    //  none
+};
+//-------------------------------------------------------------------------
 void lightFullColorLed( void )
 {
-	LED = ((loopCnt & 0x001e) == 0x0010)? 1:0;
+	LED = ((counter10msec & 0x001e) == 0x0000)? 1:0;		//	350msec
+
+	//if ( event100msec == true ) LED2 = 0;
+
+	int doremi = crntNote%12;
+	unsigned char pwm = (unsigned char)((timerStock<<2) & 0x00ff);
+
+	if ( nowPlaying == false ) doremi = 12;
+	PORTCbits.RC2 = (pwm >= tColorTable[doremi][0])? 1:0;
+	PORTCbits.RC1 = (pwm >= tColorTable[doremi][1])? 1:0;
+	PORTCbits.RC0 = (pwm >= tColorTable[doremi][2])? 1:0;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -463,18 +534,12 @@ void lightFullColorLed( void )
 /*----------------------------------------------------------------------------*/
 void main(void)
 {
-	uint16_t tmr;
-
     initMain();
 
 	USBDeviceInit();
 
     while(1){
-		//	Make Master Counter
-		tmr = (uint16_t)TMR0L;
-		tmr |= (uint16_t)(TMR0H << 8);
-		masterCounter = tmr;
-
+		generateCounter();
 
 		//	USB
 		USBDeviceTasks();
@@ -489,11 +554,30 @@ void main(void)
 		if ( USBHandleBusy(USBTxHandle) == true ){
 			continue;
 		}
+	    if ( !USBHandleBusy(USBRxHandle) ){
+		    //We have received a MIDI packet from the host, process it and then
+			//  prepare to receive the next packet
 
+	        //INSERT MIDI PROCESSING CODE HERE
 
-        //Application specific tasks
-        makeEventFromSensors();
+		    //Get ready for next packet (this will overwrite the old data)
+			USBRxHandle = USBRxOnePacket(USB_DEVICE_AUDIO_MIDI_ENDPOINT,(uint8_t*)&ReceivedDataBuffer,64);
+		}
+
+		//	Test with Tact Swtich
+		testNoteEvent();
+
+		//	Air Pressure Sensor
+		pressureSensor();
+
+		//  accelerator sensor
+		acceleratorSensor();
+	
+		//  Touch Sensor
+		touchSensor();
+
 		sendEventToUsb();
+
 		lightFullColorLed();
 	}
 

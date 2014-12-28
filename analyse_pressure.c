@@ -9,12 +9,12 @@
 
 
 //-------------------------------------------------------------------------
-static float   _lastRawPressure;
-static int     _currentStandard;
-static int     _newProposedPressure;
-static int     _samePressureCounter;
-static uint8_t _lastMidiValue;
-static int     _afterStartCounter;
+static int	_lastRawPressure;
+static int	_currentStandard;
+static int	_newProposedPressure;
+static int	_samePressureCounter;
+static uint8_t	_lastMidiValue;
+static int	_afterStartCounter;
 
 static void analyseStandardPressure( int crntPrs );
 static uint8_t interpolateMidiExp( uint8_t realExp );
@@ -34,9 +34,9 @@ static uint8_t interpolateMidiExp( uint8_t realExp );
 //-------------------------------------------------------------------------
 static const unsigned char tExpValue[MAX_EXP_WIDTH] = {
 
-0,0,0,0,0,1,3,6,9,11,
+0,0,0,0,0,0,0,3,6,9,
 
-13,16,18,20,22,24,25,27,29,31,
+12,15,18,20,22,24,25,27,29,31,
 32,34,35,37,38,40,41,42,44,45,
 46,47,48,50,51,52,53,54,55,56,
 57,58,59,60,61,62,63,63,64,65,
@@ -61,14 +61,14 @@ static const unsigned char tExpValue[MAX_EXP_WIDTH] = {
 //-------------------------------------------------------------------------
 void AnalysePressure_Init( void )
 {
-	_lastRawPressure	=	0.0;
+	_lastRawPressure	=	0;
 	_currentStandard	=	10000;
 	_samePressureCounter	=	0;
 	_lastMidiValue		=	0;
 	_afterStartCounter	=	0;
 }
 //-------------------------------------------------------------------------
-void AnalysePressure_setNewRawPressure( float prs ){ _lastRawPressure = prs;}
+void AnalysePressure_setNewRawPressure( int prs ){ _lastRawPressure = prs;}
 //-------------------------------------------------------------------------
 bool AnalysePressure_catchEventOfPeriodic( uint8_t* midiValue )
 {
@@ -78,11 +78,11 @@ bool AnalysePressure_catchEventOfPeriodic( uint8_t* midiValue )
         //  3sec. of the begining
         *midiValue = 0;
 		_afterStartCounter++;
-		_currentStandard = (int)(_lastRawPressure*10);
+		_currentStandard = _lastRawPressure;
         return false;
     }
 
-    int     currentPrs = (int)(_lastRawPressure*10);
+    int     currentPrs = _lastRawPressure;
 
     //  Analyse & Generate Standard Pressure
     analyseStandardPressure(currentPrs);
@@ -92,23 +92,29 @@ bool AnalysePressure_catchEventOfPeriodic( uint8_t* midiValue )
     if ( diff < 0 ) diff = 0;
     else if ( diff > MAX_EXP_WIDTH ) diff = MAX_EXP_WIDTH;
     uint8_t md = tExpValue[diff];
+	uint8_t exp = _lastMidiValue;
 
     if ( md != _lastMidiValue ){
         //  interpolate MIDI value
-        *midiValue = interpolateMidiExp(md);
+        exp = interpolateMidiExp(md);
+		_lastMidiValue = exp;
         ret = true;
     }
-    else {
-        *midiValue = _lastMidiValue;
-        ret = false;
-    }
 
+	//	output
+	*midiValue = exp;
     return ret;
 }
 //-------------------------------------------------------------------------
 static void analyseStandardPressure( int crntPrs )
 {
-    //  Analize Standard Pressure
+	if (( _currentStandard+50 < crntPrs ) ||
+		( _currentStandard-50 > crntPrs )){
+        _samePressureCounter = 0;		
+		return;
+	}
+
+	//  Analize Standard Pressure
     if (( _newProposedPressure+NOISE_WIDTH < crntPrs ) ||
         ( _newProposedPressure-NOISE_WIDTH > crntPrs )){
         _samePressureCounter = 0;
@@ -129,8 +135,10 @@ static void analyseStandardPressure( int crntPrs )
 static uint8_t interpolateMidiExp( uint8_t realExp )
 {
     if ( realExp > _lastMidiValue ){
-        if ( realExp > _lastMidiValue + MIDI_EXP_ITP_STEP )
-            realExp = _lastMidiValue + MIDI_EXP_ITP_STEP;
+		if ( _lastMidiValue < 127 - MIDI_EXP_ITP_STEP ){
+			if ( realExp > _lastMidiValue + MIDI_EXP_ITP_STEP )
+				realExp = _lastMidiValue + MIDI_EXP_ITP_STEP;
+		}
     }
     else {  // realExp < _lastMidiValue
         if ( _lastMidiValue > MIDI_EXP_ITP_STEP ){

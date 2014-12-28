@@ -15,7 +15,7 @@ extern "C" {
 void initI2c( void );
 
 void LPS331AP_init( void );
-float LPS331AP_getPressure( void );
+int LPS331AP_getPressure( void );
 
 void MPR121_init( void );
 unsigned char MPR121_getTchSwData( void );

@@ -7,8 +7,84 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <xc.h>
 
-#include "i2c-lib.h"
+//-------------------------------------------------------------------------
+//			I2C Basic Functions
+//-------------------------------------------------------------------------
+//#ifndef _XTAL_FREQ
+    /* 例：4MHzの場合、4000000 をセットする */
+//    #define _XTAL_FREQ 48000000
+//#endif
+
+//extern bool	dbg;
+#define	LED2         PORTCbits.RC5
+
+// I2C通信がビジー状態を脱するまで待つ
+bool i2c_wait(void){
+	volatile int cnt=0;
+    while ( ( SSPCON2 & 0x1F ) || ( SSPSTAT & 0x04 ) ){
+		if ( cnt++ > 1000 ) return false;
+	}
+	return true;
+}
+
+// I2Cバスを有効化
+void i2c_enable(void)
+{
+    SSPSTAT = 0b00000000;      // I2C 100kHz
+    SSPADD = 0x1d;             // I2Cbus Baud rate,  48MHz/((SSP1ADD + 1)*4) = 100kHz
+    SSPCON1 = 0b00101000;      // I2C enable, Master Mode
+	SSPCON2 = 0x00;
+}
+
+// I2Cバスを無効化
+void i2c_disable(void){
+    SSPCON1 = 0b00001000;      // I2C disable, Master Mode
+}
+
+// I2C書き込みサイクルの開始（Start Conditionの発行）
+void i2c_start(void){
+    SSPCON2bits.SEN = 1;       //  Start Condition Enabled bit
+    i2c_wait();
+}
+
+// I2C書き込みサイクルの開始（Repeat Start Conditionの発行）
+void i2c_repeat_start(void){
+    SSPCON2bits.RSEN = 1;      //  Start Condition Enabled bit
+    i2c_wait();
+}
+
+// I2C書き込みサイクルの終了（Stop Conditionの発行）
+void i2c_stop(void){
+    SSPCON2bits.PEN = 1;       // Stop Condition Enable bit
+    i2c_wait();
+}
+
+// I2Cバスにデータを送信（1バイト分）
+bool i2c_send_byte(const unsigned char data){
+    SSPBUF = data;
+    return i2c_wait();
+}
+
+//I2Cバスからデータ受信
+// ack=1 : 受信後ACKを送信し、次のデータを送るようスレーブデバイスに指示
+// ack=0 : 受信後NO_ACKを送信し、これ以上受信しないことをスレーブデバイスに指示
+unsigned char i2c_read_byte(const char ack){
+    SSPCON2bits.RCEN = 1;
+    i2c_wait();
+    unsigned char data = SSPBUF;
+    if ( i2c_wait() == false ) return data;
+
+    if(ack) SSPCON2bits.ACKDT = 0;     // ACK
+    else SSPCON2bits.ACKDT = 1;        // NO_ACK
+
+    SSPCON2bits.ACKEN = 1;
+
+    i2c_wait();
+    return data;
+}
 
 //-------------------------------------------------------------------------
 //			Constants
@@ -24,8 +100,6 @@ static unsigned char ACCEL_SENSOR_ADDRESS = 0x1d;
 // I2C Bus Control Definition
 #define I2C_WRITE_CMD 0
 #define I2C_READ_CMD 1
-
-
 //-------------------------------------------------------------------------
 //			I2c Device Access Functions
 //-------------------------------------------------------------------------
@@ -42,17 +116,17 @@ void quitI2c( void )
 void writeI2c( unsigned char adrs, unsigned char data )
 {
 	i2c_start();
-	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
-	i2c_send_byte(data);
+	if ( i2c_send_byte((adrs<<1) | I2C_WRITE_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
+	if ( i2c_send_byte(data) == false ) return;
 	i2c_stop();
 }
 //-------------------------------------------------------------------------
 void writeI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char data )
 {
 	i2c_start();
-	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
-	i2c_send_byte(cmd);
-	i2c_send_byte(data);
+	if ( i2c_send_byte((adrs<<1) | I2C_WRITE_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
+	if ( i2c_send_byte(cmd) == false ) return;
+	if ( i2c_send_byte(data) == false ) return;
 	i2c_stop();
 }
 //-------------------------------------------------------------------------
@@ -60,34 +134,32 @@ void writeI2cWithCmdAndMultiData( unsigned char adrs, unsigned char cmd, unsigne
 {
 	int i=0;
 	i2c_start();
-	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
-	i2c_send_byte(cmd);
+	if ( i2c_send_byte((adrs<<1) | I2C_WRITE_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
+	if ( i2c_send_byte(cmd) == false ) return;
 	while (i<length){
-		i2c_send_byte(*(data+i));
+		if ( i2c_send_byte(*(data+i)) == false ) return;
 		i++;
 	}
 	i2c_stop();
 }
 //-------------------------------------------------------------------------
-unsigned char readI2c( unsigned char adrs )
+void readI2c( unsigned char adrs, unsigned char* data )
 {
-	unsigned char data;
 	i2c_start();
-	i2c_send_byte((adrs<<1) | I2C_READ_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Read=0）を付与
-	data = i2c_read_byte(0);
+	if ( i2c_send_byte((adrs<<1) | I2C_READ_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Read=0）を付与
+	*data = i2c_read_byte(0);
 	i2c_stop();
-	return data;
 }
 //-------------------------------------------------------------------------
 void readI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char* data, int length )
 {
 	int i=0;
 	i2c_start();
-	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
-	i2c_send_byte(cmd);
+	if ( i2c_send_byte((adrs<<1) | I2C_WRITE_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
+	if ( i2c_send_byte(cmd) == false ) return;
 
 	i2c_repeat_start();
-	i2c_send_byte((adrs<<1) | I2C_READ_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Read=0）を付与
+	if ( i2c_send_byte((adrs<<1) | I2C_READ_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Read=0）を付与
 	while (i<length){
 		if ( length > i+1 ){
 			*(data+i) = i2c_read_byte(1);
@@ -122,17 +194,16 @@ void LPS331AP_init( void )
 	writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_PWRON, 0xf0 );	//	Power On
 }
 //-------------------------------------------------------------------------
-float LPS331AP_getPressure( void )
+int LPS331AP_getPressure( void )
 {
 	unsigned char	dt[3];
 	float	tmpPrs = 0;
 
 	readI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_DT_L|0x80, dt, 3 );
-	tmpPrs += dt[1];
-	tmpPrs += dt[2] << 8;
-	tmpPrs /= 16.0;
+	tmpPrs = (float)(((unsigned long)dt[2]<<16)|((unsigned long)dt[1]<<8)|dt[0]);
+	tmpPrs = tmpPrs*10/4096;
 
-	return tmpPrs;
+	return (int)tmpPrs;
 }
 
 //-------------------------------------------------------------------------
