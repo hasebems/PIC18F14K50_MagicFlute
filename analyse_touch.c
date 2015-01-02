@@ -56,7 +56,7 @@ void AnalyseTouch_init( void )
 //-------------------------------------------------------------------------
 void AnalyseTouch_setNewTouch( uint8_t tch ){ _crntTouch = tch;}
 //-------------------------------------------------------------------------
-uint8_t AnalyseTouch_getNewNote( void )
+static uint8_t getNewNote( void )
 {
     _lastNote = tSwTable[_crntTouch];
     _tapTouch = 0;
@@ -76,7 +76,7 @@ bool AnalyseTouch_catchEventOfPeriodic( uint8_t* midiValue, long crntTime )
             if ( _startTime != 0 ){
                 if ( crntTime-_startTime > DEADBAND_POINT_TIME*_deadBand ){
                     //  KeyOn
-                    *midiValue = AnalyseTouch_getNewNote();
+                    *midiValue = getNewNote();
                     ret = true;
                 }
             }
@@ -87,7 +87,7 @@ bool AnalyseTouch_catchEventOfPeriodic( uint8_t* midiValue, long crntTime )
         if ((_deadBand > 0) && (_tapTouch&TAP_FLAG) && ((_tapTouch&ALL_SW) == _crntTouch)){
             //  KeyOn
             //if (_dbg) _dbg->printf("<<Tapped>>\n");
-            *midiValue = AnalyseTouch_getNewNote();
+            *midiValue = getNewNote();
             ret = true;
         }
 
@@ -118,7 +118,7 @@ bool AnalyseTouch_catchEventOfPeriodic( uint8_t* midiValue, long crntTime )
             }
             else {
                 // 0 - 2
-                *midiValue = AnalyseTouch_getNewNote();
+                *midiValue = getNewNote();
                 ret = true;
             }
         }

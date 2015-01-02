@@ -18,71 +18,82 @@
 //    #define _XTAL_FREQ 48000000
 //#endif
 
-//extern bool	dbg;
+bool i2cErr;
 #define	LED2         PORTCbits.RC5
 
 // I2C通信がビジー状態を脱するまで待つ
-bool i2c_wait(void){
+void i2c_check(void){
+	volatile int cnt=0;
+    while ( ( SSPCON2 & 0x1F ) || ( SSPSTAT & 0x05 ) ){	//	Buffer Full Check
+		if ( cnt++ > 1000 ){ i2cErr = SSPCON2 & 0x1F? true:false; break;}
+	}
+}
+void i2c_wait(void){
 	volatile int cnt=0;
     while ( ( SSPCON2 & 0x1F ) || ( SSPSTAT & 0x04 ) ){
-		if ( cnt++ > 1000 ) return false;
+		if ( cnt++ > 1000 ){ i2cErr = SSPCON2 & 0x1F? true:false; break;}
 	}
-	return true;
 }
 
 // I2Cバスを有効化
 void i2c_enable(void)
 {
-    SSPSTAT = 0b00000000;      // I2C 100kHz
-    SSPADD = 0x1d;             // I2Cbus Baud rate,  48MHz/((SSP1ADD + 1)*4) = 100kHz
-    SSPCON1 = 0b00101000;      // I2C enable, Master Mode
+    SSPSTAT = 0b10000000;      // I2C 100kHz
+    SSPADD = 0x77;             // I2Cbus Baud rate,  48MHz/((SSP1ADD + 1)*4) = 400kHz -> 0x1d, 100kHz -> 0x77
+    SSPCON1 = 0b00001000;      // I2C enable, Master Mode
 	SSPCON2 = 0x00;
+	i2cErr = false;
+	SSPCON1bits.SSPEN = 1;		//	I2C enable
 }
 
 // I2Cバスを無効化
 void i2c_disable(void){
-    SSPCON1 = 0b00001000;      // I2C disable, Master Mode
+    SSPCON1bits.SSPEN = 0;      // I2C disable
 }
 
 // I2C書き込みサイクルの開始（Start Conditionの発行）
 void i2c_start(void){
-    SSPCON2bits.SEN = 1;       //  Start Condition Enabled bit
-    i2c_wait();
+    i2c_check();
+	SSPCON2bits.SEN = 1;       //  Start Condition Enabled bit
+    i2c_check();
 }
 
 // I2C書き込みサイクルの開始（Repeat Start Conditionの発行）
 void i2c_repeat_start(void){
     SSPCON2bits.RSEN = 1;      //  Start Condition Enabled bit
-    i2c_wait();
+    i2c_check();
 }
 
 // I2C書き込みサイクルの終了（Stop Conditionの発行）
 void i2c_stop(void){
-    SSPCON2bits.PEN = 1;       // Stop Condition Enable bit
-    i2c_wait();
+    i2c_check();
+	SSPCON2bits.PEN = 1;       // Stop Condition Enable bit
 }
 
 // I2Cバスにデータを送信（1バイト分）
-bool i2c_send_byte(const unsigned char data){
-    SSPBUF = data;
-    return i2c_wait();
+void i2c_send_byte(const unsigned char data){
+    //i2c_check();
+	SSPBUF = data;
+    i2c_check();
+	//	while(SSPCON2bits.ACKSTAT==1);
 }
 
 //I2Cバスからデータ受信
 // ack=1 : 受信後ACKを送信し、次のデータを送るようスレーブデバイスに指示
 // ack=0 : 受信後NO_ACKを送信し、これ以上受信しないことをスレーブデバイスに指示
 unsigned char i2c_read_byte(const char ack){
-    SSPCON2bits.RCEN = 1;
+    i2c_check();
+	SSPCON2bits.RCEN = 1;
     i2c_wait();
     unsigned char data = SSPBUF;
-    if ( i2c_wait() == false ) return data;
+    i2c_check();
 
     if(ack) SSPCON2bits.ACKDT = 0;     // ACK
     else SSPCON2bits.ACKDT = 1;        // NO_ACK
 
     SSPCON2bits.ACKEN = 1;
 
-    i2c_wait();
+    i2c_check();
     return data;
 }
 
@@ -116,17 +127,17 @@ void quitI2c( void )
 void writeI2c( unsigned char adrs, unsigned char data )
 {
 	i2c_start();
-	if ( i2c_send_byte((adrs<<1) | I2C_WRITE_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
-	if ( i2c_send_byte(data) == false ) return;
+	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
+	i2c_send_byte(data);
 	i2c_stop();
 }
 //-------------------------------------------------------------------------
 void writeI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char data )
 {
 	i2c_start();
-	if ( i2c_send_byte((adrs<<1) | I2C_WRITE_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
-	if ( i2c_send_byte(cmd) == false ) return;
-	if ( i2c_send_byte(data) == false ) return;
+	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
+	i2c_send_byte(cmd);
+	i2c_send_byte(data);
 	i2c_stop();
 }
 //-------------------------------------------------------------------------
@@ -134,10 +145,10 @@ void writeI2cWithCmdAndMultiData( unsigned char adrs, unsigned char cmd, unsigne
 {
 	int i=0;
 	i2c_start();
-	if ( i2c_send_byte((adrs<<1) | I2C_WRITE_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
-	if ( i2c_send_byte(cmd) == false ) return;
+	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
+	i2c_send_byte(cmd);
 	while (i<length){
-		if ( i2c_send_byte(*(data+i)) == false ) return;
+		i2c_send_byte(*(data+i));
 		i++;
 	}
 	i2c_stop();
@@ -146,7 +157,7 @@ void writeI2cWithCmdAndMultiData( unsigned char adrs, unsigned char cmd, unsigne
 void readI2c( unsigned char adrs, unsigned char* data )
 {
 	i2c_start();
-	if ( i2c_send_byte((adrs<<1) | I2C_READ_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Read=0）を付与
+	i2c_send_byte((adrs<<1) | I2C_READ_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Read=1）を付与
 	*data = i2c_read_byte(0);
 	i2c_stop();
 }
@@ -155,11 +166,11 @@ void readI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char* data,
 {
 	int i=0;
 	i2c_start();
-	if ( i2c_send_byte((adrs<<1) | I2C_WRITE_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
-	if ( i2c_send_byte(cmd) == false ) return;
+	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
+	i2c_send_byte(cmd);
 
 	i2c_repeat_start();
-	if ( i2c_send_byte((adrs<<1) | I2C_READ_CMD) == false ) return;   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Read=0）を付与
+	i2c_send_byte((adrs<<1) | I2C_READ_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Read=1）を付与
 	while (i<length){
 		if ( length > i+1 ){
 			*(data+i) = i2c_read_byte(1);
@@ -235,7 +246,7 @@ void MPR121_init( void )
 	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_ELE_CFG, 0x00 );
 
     // Electrode filters for when data is > baseline
-    unsigned char gtBaseline[] = {
+    const unsigned char gtBaseline[] = {
 		0x01,  //MHD_R
 		0x01,  //NHD_R
 		0x00,  //NCL_R
@@ -246,7 +257,7 @@ void MPR121_init( void )
 
 
 	// Electrode filters for when data is < baseline
-	unsigned char ltBaseline[] = {
+	const unsigned char ltBaseline[] = {
         0x01,   //MHD_F
         0x01,   //NHD_F
         0xFF,   //NCL_F
@@ -256,7 +267,7 @@ void MPR121_init( void )
 		writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_MHD_F+i, ltBaseline[i] );
 
     // Electrode touch and release thresholds
-    unsigned char electrodeThresholds[] = {
+    const unsigned char electrodeThresholds[] = {
         E_THR_T, // Touch Threshhold
         E_THR_R  // Release Threshold
 	};
@@ -268,7 +279,7 @@ void MPR121_init( void )
 	}
 
     // Proximity Settings
-    unsigned char proximitySettings[] = {
+    const unsigned char proximitySettings[] = {
         0xff,   //MHD_Prox_R
         0xff,   //NHD_Prox_R
         0x00,   //NCL_Prox_R
@@ -284,7 +295,7 @@ void MPR121_init( void )
     for ( i=0; i<11; i++ )
 		writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_MHDPROXR+i, proximitySettings[i] );
 
-    unsigned char proxThresh[] = {
+    const unsigned char proxThresh[] = {
         PROX_THR_T, // Touch Threshold
         PROX_THR_R  // Release Threshold
 	};
@@ -301,7 +312,7 @@ unsigned char MPR121_getTchSwData( void )
 {
 	unsigned char buf[2];
 
-	readI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_TOUCH_STATUS1, buf, 1 );
+	readI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_TOUCH_STATUS1, buf, 2 );
 
 //	return (buf[1]<<8) | buf[0];
 	return buf[0];

@@ -14,7 +14,6 @@
 
 extern void AnalyseTouch_init( void );
 extern void AnalyseTouch_setNewTouch( uint8_t tch );
-extern uint8_t AnalyseTouch_getNewNote( void );
 extern bool AnalyseTouch_catchEventOfPeriodic( uint8_t* midiValue, long crntTime );
 
 #if 0

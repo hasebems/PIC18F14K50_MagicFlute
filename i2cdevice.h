@@ -12,6 +12,8 @@
 extern "C" {
 #endif
 
+extern bool i2cErr;
+    
 void initI2c( void );
 
 void LPS331AP_init( void );

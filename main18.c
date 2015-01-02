@@ -23,6 +23,13 @@
 // #pragma config statements should precede project file includes.
 // Use project enums instead of #define for ON and OFF.
 
+#ifndef _XTAL_FREQ
+    /* 例：4MHzの場合、4000000 をセットする */
+    #define _XTAL_FREQ 48000000
+#endif
+//#define __delay_us(x) _delay((unsigned long)((x)*(_XTAL_FREQ/4000000UL)))
+//#define __delay_ms(x) _delay((unsigned long)((x)*(_XTAL_FREQ/4000UL)))
+
 // CONFIG1L
 #pragma config CPUDIV = NOCLKDIV// CPU System Clock Selection bits (No CPU System Clock divide)
 #pragma config USBDIV = OFF     // USB Clock Selection bit (USB clock comes directly from the OSC1/OSC2 oscillator block; no divide)
@@ -82,8 +89,6 @@
 #define	LED         PORTCbits.RC6
 #define	LED2         PORTCbits.RC5
 
-bool	dbg;
-
 /*----------------------------------------------------------------------------*/
 //
 //      Variables
@@ -126,8 +131,6 @@ void initCommon( void )
 	lastMod = 0;
 	lastPrt = 0;
 
-	dbg = false;
-
 	AnalysePressure_Init();
 	AnalyseTouch_init();
 }
@@ -142,8 +145,9 @@ void initAllI2cHw( void )
 	initI2c();
 	LPS331AP_init();
 	MPR121_init();
-//	BlinkM_init();
 	ADXL345_init();
+
+//	BlinkM_init();
 }
 
 /*----------------------------------------------------------------------------*/
@@ -514,12 +518,18 @@ const unsigned char tColorTable[13][3] = {
 //-------------------------------------------------------------------------
 void lightFullColorLed( void )
 {
+	//	Heartbeat
 	LED = ((counter10msec & 0x001e) == 0x0000)? 1:0;		//	350msec
 
-	//if ( event100msec == true ) LED2 = 0;
+	//	Debug
+	if ( i2cErr == true ){
+		if ( event100msec == true ) LED2 = 0;
+		else LED2 = 1;
+	}
 
+	//	PWM Full Color LED
 	int doremi = crntNote%12;
-	unsigned char pwm = (unsigned char)((timerStock<<2) & 0x00ff);
+	unsigned char pwm = (unsigned char)((timerStock>>2) & 0x00ff);
 
 	if ( nowPlaying == false ) doremi = 12;
 	PORTCbits.RC2 = (pwm >= tColorTable[doremi][0])? 1:0;
