@@ -523,7 +523,10 @@ void lightFullColorLed( void )
 
 	//	Debug
 	if ( i2cErr == true ){
-		if ( event100msec == true ) LED2 = 0;
+		if ( event100msec == true ){
+			LED2 = 0;
+			i2cErr = false;
+		}
 		else LED2 = 1;
 	}
 

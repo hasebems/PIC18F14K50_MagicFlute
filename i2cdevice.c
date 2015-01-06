@@ -53,22 +53,22 @@ void quitI2c( void )
 }
 //-------------------------------------------------------------------------
 // I2C通信がビジー状態を脱するまで待つ
-bool i2c_check(void){
+bool i2c_check( bool target ){
 	volatile int cnt=0;
     while ( ( SSPCON2 & 0x5F ) || ( SSPSTAT & 0x05 ) ){	//	Buffer Full Check
 		if ( cnt++ > 1000 ){
-			i2cErr = ((SSPCON2 & 0x18)&&(i2cAdrs == TOUCH_SENSOR_ADDRESS))? true:false;
+			i2cErr = target;
 			return false;
 		}
 	}
 	return true;
 }
 //-------------------------------------------------------------------------
-bool i2c_wait(void){
+bool i2c_wait( bool target ){
 	volatile int cnt=0;
     while ( ( SSPCON2 & 0x5F ) || ( SSPSTAT & 0x04 ) ){
 		if ( cnt++ > 1000 ){
-			i2cErr = ((SSPCON2 & 0x18)&&(i2cAdrs == TOUCH_SENSOR_ADDRESS))? true:false;
+			i2cErr = target;
 			return false;
 		}
 	}
@@ -87,17 +87,19 @@ void i2c_err(void)
 //-------------------------------------------------------------------------
 void writeI2c( unsigned char adrs, unsigned char data )
 {
-	if ( i2c_check() == false ){i2c_err(); return;}
+	bool target = (i2cAdrs == TOUCH_SENSOR_ADDRESS)? true:false;
+	
+	if ( i2c_check(target) == false ){i2c_err(); return;}
 
 	SSPCON2bits.SEN = 1;       //  Start Condition Enabled bit
 	while(SSPCON2bits.SEN);
 
 	SSPBUF = (adrs<<1) | I2C_WRITE_CMD;
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(target) == false ){i2c_err(); return;}
 	//while(SSPCON2bits.ACKSTAT==1);
 
 	SSPBUF = data;
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(target) == false ){i2c_err(); return;}
 	//while(SSPCON2bits.ACKSTAT==1);
 
 	SSPCON2bits.PEN = 1;       // Stop Condition Enable bit
@@ -111,21 +113,23 @@ void writeI2c( unsigned char adrs, unsigned char data )
 //-------------------------------------------------------------------------
 void writeI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char data )
 {
-    if ( i2c_check() == false ){i2c_err(); return;}
+	bool target = (i2cAdrs == TOUCH_SENSOR_ADDRESS)? true:false;
+
+	if ( i2c_check(target) == false ){i2c_err(); return;}
 
 	SSPCON2bits.SEN = 1;       //  Start Condition Enabled bit
 	while(SSPCON2bits.SEN);
 
 	SSPBUF = (adrs<<1) | I2C_WRITE_CMD;
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(target) == false ){i2c_err(); return;}
 	//while(SSPCON2bits.ACKSTAT==1);
 
 	SSPBUF = cmd;
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(target) == false ){i2c_err(); return;}
 	//while(SSPCON2bits.ACKSTAT==1);
 
 	SSPBUF = data;
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(target) == false ){i2c_err(); return;}
 	//while(SSPCON2bits.ACKSTAT==1);
 
 	SSPCON2bits.PEN = 1;       // Stop Condition Enable bit
@@ -141,23 +145,24 @@ void writeI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char data 
 void writeI2cWithCmdAndMultiData( unsigned char adrs, unsigned char cmd, unsigned char* data, int length )
 {
 	int i=0;
+	bool target = (i2cAdrs == TOUCH_SENSOR_ADDRESS)? true:false;
 
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(target) == false ){i2c_err(); return;}
 
 	SSPCON2bits.SEN = 1;       //  Start Condition Enabled bit
 	while(SSPCON2bits.SEN);
 
 	SSPBUF = (adrs<<1) | I2C_WRITE_CMD;
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(target) == false ){i2c_err(); return;}
 	//while(SSPCON2bits.ACKSTAT==1);
 
 	SSPBUF = cmd;
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(target) == false ){i2c_err(); return;}
 	//while(SSPCON2bits.ACKSTAT==1);
 
 	while (i<length){
 		SSPBUF = *(data+i);
-		if ( i2c_check() == false ){i2c_err(); return;}
+		if ( i2c_check(target) == false ){i2c_err(); return;}
 		//while(SSPCON2bits.ACKSTAT==1);
 		i++;
 	}
@@ -186,39 +191,40 @@ void writeI2cWithCmdAndMultiData( unsigned char adrs, unsigned char cmd, unsigne
 void readI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char* data, int length )
 {
 	int i=0;
+//	bool target = (i2cAdrs == TOUCH_SENSOR_ADDRESS)? true:false;
 
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(false) == false ){i2c_err(); return;}
 
 	SSPCON2bits.SEN = 1;       //  Start Condition Enabled bit
 	while(SSPCON2bits.SEN);
 
 	SSPBUF = (adrs<<1) | I2C_WRITE_CMD;
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(false) == false ){i2c_err(); return;}
 	//while(SSPCON2bits.ACKSTAT==1);
 
 	SSPBUF = cmd;
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(false) == false ){i2c_err(); return;}
 	//while(SSPCON2bits.ACKSTAT==1);
 
     SSPCON2bits.RSEN = 1;      //  Start Condition Enabled bit
 	while(SSPCON2bits.RSEN);
 
 	SSPBUF = (adrs<<1) | I2C_READ_CMD;
-    if ( i2c_check() == false ){i2c_err(); return;}
+    if ( i2c_check(false) == false ){i2c_err(); return;}
 	//while(SSPCON2bits.ACKSTAT==1);
 
 	while (i<length){
 
-		if ( i2c_check() == false ){i2c_err(); return;}
+		if ( i2c_check(true) == false ){i2c_err(); return;}
 		SSPCON2bits.RCEN = 1;
-		if ( i2c_wait() == false ){i2c_err(); return;}
+		if ( i2c_wait(true) == false ){i2c_err(); return;}
 		*(data+i) = SSPBUF;
-		if ( i2c_check() == false ){i2c_err(); return;}
+		if ( i2c_check(true) == false ){i2c_err(); return;}
 
 		if ( length > i+1 )	SSPCON2bits.ACKDT = 0;     // ACK
 		else				SSPCON2bits.ACKDT = 1;     // NO_ACK
 		SSPCON2bits.ACKEN = 1;
-		if ( i2c_check() == false ){i2c_err(); return;}
+		if ( i2c_check(true) == false ){i2c_err(); return;}
 
 		i++;
 	}
@@ -368,7 +374,7 @@ void MPR121_init( void )
 	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_FIL_CFG, 0x04 );
 
     // Set the electrode config to transition to active mode
-	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_ELE_CFG, 0x0c );
+	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_ELE_CFG, 0x8f );
 }
 //-------------------------------------------------------------------------
 unsigned char MPR121_getTchSwData( void )
