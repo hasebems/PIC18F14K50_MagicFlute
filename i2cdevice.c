@@ -34,7 +34,6 @@ static unsigned char ACCEL_SENSOR_ADDRESS = 0x1d;
 //#endif
 
 bool i2cErr;
-unsigned char i2cAdrs;
 //-------------------------------------------------------------------------
 void initI2c( void )
 {
@@ -43,7 +42,6 @@ void initI2c( void )
     SSPCON1 = 0b00001000;      // I2C enable, Master Mode
 	SSPCON2 = 0x00;
 	i2cErr = false;
-	i2cAdrs = 0;
 	SSPCON1bits.SSPEN = 1;		//	I2C enable
 }
 //-------------------------------------------------------------------------
@@ -53,26 +51,48 @@ void quitI2c( void )
 }
 //-------------------------------------------------------------------------
 // I2C通信がビジー状態を脱するまで待つ
-bool i2c_check( bool target ){
+int i2c_checkWrite( bool target ){
+	volatile int cnt=0;
+    while ( SSPCON2bits.ACKSTAT || ( SSPSTAT & 0x01 ) ){	//	Buffer Full Check
+		if ( cnt++ > 1000 ){
+			i2cErr = i2cErr||target;
+			return (int)(SSPCON2 & 0x5f);
+		}
+	}
+	return 0;
+}
+//-------------------------------------------------------------------------
+int i2c_checkRead( bool target ){
+	volatile int cnt=0;
+    while ( SSPSTAT & 0x01 ){	//	Buffer Full Check
+		if ( cnt++ > 1000 ){
+			i2cErr = i2cErr||target;
+			return (int)(SSPCON2 & 0x5f);
+		}
+	}
+	return 0;
+}
+//-------------------------------------------------------------------------
+int i2c_check( bool target ){
 	volatile int cnt=0;
     while ( ( SSPCON2 & 0x5F ) || ( SSPSTAT & 0x05 ) ){	//	Buffer Full Check
 		if ( cnt++ > 1000 ){
-			i2cErr = target;
-			return false;
+			i2cErr = i2cErr||target;
+			return (int)(SSPCON2 & 0x5f);
 		}
 	}
-	return true;
+	return 0;
 }
 //-------------------------------------------------------------------------
-bool i2c_wait( bool target ){
+int i2c_wait( bool target ){
 	volatile int cnt=0;
     while ( ( SSPCON2 & 0x5F ) || ( SSPSTAT & 0x04 ) ){
 		if ( cnt++ > 1000 ){
-			i2cErr = target;
-			return false;
+			i2cErr = i2cErr||target;
+			return (int)(SSPCON2 & 0x5f);
 		}
 	}
-	return true;
+	return 0;
 }
 //-------------------------------------------------------------------------
 void i2c_err(void)
@@ -85,55 +105,62 @@ void i2c_err(void)
 //-------------------------------------------------------------------------
 //			I2c Device Access Functions
 //-------------------------------------------------------------------------
-void writeI2c( unsigned char adrs, unsigned char data )
+int writeI2c( unsigned char adrs, unsigned char data )
 {
-	bool target = (i2cAdrs == TOUCH_SENSOR_ADDRESS)? true:false;
-	
-	if ( i2c_check(target) == false ){i2c_err(); return;}
+	int	err = 0;
+
+	err = i2c_check(false);
+	if (err){i2c_err(); return 1;}
 
 	SSPCON2bits.SEN = 1;       //  Start Condition Enabled bit
 	while(SSPCON2bits.SEN);
 
 	SSPBUF = (adrs<<1) | I2C_WRITE_CMD;
-    if ( i2c_check(target) == false ){i2c_err(); return;}
-	//while(SSPCON2bits.ACKSTAT==1);
+	err = i2c_check(false);
+    if (err){i2c_err(); return 1;}
 
 	SSPBUF = data;
-    if ( i2c_check(target) == false ){i2c_err(); return;}
-	//while(SSPCON2bits.ACKSTAT==1);
+	err = i2c_check(false);
+    if (err){i2c_err(); return 1;}
 
 	SSPCON2bits.PEN = 1;       // Stop Condition Enable bit
 	while(SSPCON2bits.PEN);
-	
+
+	return 0;
+
 //	i2c_start();
 //	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
 //	i2c_send_byte(data);
 //	i2c_stop();
 }
 //-------------------------------------------------------------------------
-void writeI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char data )
+int writeI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char data )
 {
-	bool target = (i2cAdrs == TOUCH_SENSOR_ADDRESS)? true:false;
+	int	err = 0;
 
-	if ( i2c_check(target) == false ){i2c_err(); return;}
+	err = i2c_check(false);
+	if (err){i2c_err(); return 1;}
 
+	//	Start I2C
 	SSPCON2bits.SEN = 1;       //  Start Condition Enabled bit
 	while(SSPCON2bits.SEN);
 
 	SSPBUF = (adrs<<1) | I2C_WRITE_CMD;
-    if ( i2c_check(target) == false ){i2c_err(); return;}
-	//while(SSPCON2bits.ACKSTAT==1);
+	err = i2c_check(false);
+	if (err){i2c_err(); return 1;}
 
 	SSPBUF = cmd;
-    if ( i2c_check(target) == false ){i2c_err(); return;}
-	//while(SSPCON2bits.ACKSTAT==1);
+	err = i2c_check(false);
+	if (err){i2c_err(); return 1;}
 
 	SSPBUF = data;
-    if ( i2c_check(target) == false ){i2c_err(); return;}
-	//while(SSPCON2bits.ACKSTAT==1);
+	err = i2c_check(false);
+	if (err){i2c_err(); return 1;}
 
 	SSPCON2bits.PEN = 1;       // Stop Condition Enable bit
 	while(SSPCON2bits.PEN);
+
+	return 0;
 
 //	i2c_start();
 //	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
@@ -142,33 +169,36 @@ void writeI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char data 
 //	i2c_stop();
 }
 //-------------------------------------------------------------------------
-void writeI2cWithCmdAndMultiData( unsigned char adrs, unsigned char cmd, unsigned char* data, int length )
+int writeI2cWithCmdAndMultiData( unsigned char adrs, unsigned char cmd, unsigned char* data, int length )
 {
-	int i=0;
-	bool target = (i2cAdrs == TOUCH_SENSOR_ADDRESS)? true:false;
+	int i=0, err=0;
 
-    if ( i2c_check(target) == false ){i2c_err(); return;}
+	err = i2c_check(false);
+    if (err){i2c_err(); return 1;}
 
+	//	Start I2C
 	SSPCON2bits.SEN = 1;       //  Start Condition Enabled bit
 	while(SSPCON2bits.SEN);
 
 	SSPBUF = (adrs<<1) | I2C_WRITE_CMD;
-    if ( i2c_check(target) == false ){i2c_err(); return;}
-	//while(SSPCON2bits.ACKSTAT==1);
+	err = i2c_check(false);
+    if (err){i2c_err(); return 1;}
 
 	SSPBUF = cmd;
-    if ( i2c_check(target) == false ){i2c_err(); return;}
-	//while(SSPCON2bits.ACKSTAT==1);
+	err = i2c_check(false);
+    if (err){i2c_err(); return 1;}
 
 	while (i<length){
 		SSPBUF = *(data+i);
-		if ( i2c_check(target) == false ){i2c_err(); return;}
-		//while(SSPCON2bits.ACKSTAT==1);
+		err = i2c_check(false);
+		if (err){i2c_err(); return 1;}
 		i++;
 	}
 
 	SSPCON2bits.PEN = 1;       // Stop Condition Enable bit
 	while(SSPCON2bits.PEN);
+
+	return 0;
 
 //	i2c_start();
 //	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
@@ -188,49 +218,62 @@ void writeI2cWithCmdAndMultiData( unsigned char adrs, unsigned char cmd, unsigne
 //	i2c_stop();
 //}
 //-------------------------------------------------------------------------
-void readI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char* data, int length )
+int readI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char* data, int length )
 {
-	int i=0;
-//	bool target = (i2cAdrs == TOUCH_SENSOR_ADDRESS)? true:false;
+	int i=0, err=0;
 
-    if ( i2c_check(false) == false ){i2c_err(); return;}
+	err = i2c_check(true);
+    if (err){i2c_err(); return err;}
 
+	//	Start I2C
 	SSPCON2bits.SEN = 1;       //  Start Condition Enabled bit
 	while(SSPCON2bits.SEN);
 
 	SSPBUF = (adrs<<1) | I2C_WRITE_CMD;
-    if ( i2c_check(false) == false ){i2c_err(); return;}
-	//while(SSPCON2bits.ACKSTAT==1);
+	err = i2c_checkWrite(false);
+	if (err){i2c_err(); return 34;}
 
 	SSPBUF = cmd;
-    if ( i2c_check(false) == false ){i2c_err(); return;}
-	//while(SSPCON2bits.ACKSTAT==1);
+	err = i2c_checkWrite(false);
+	if (err){i2c_err(); return 35;}
 
     SSPCON2bits.RSEN = 1;      //  Start Condition Enabled bit
 	while(SSPCON2bits.RSEN);
 
 	SSPBUF = (adrs<<1) | I2C_READ_CMD;
-    if ( i2c_check(false) == false ){i2c_err(); return;}
-	//while(SSPCON2bits.ACKSTAT==1);
+	err = i2c_checkWrite(false);
+	if (err){i2c_err(); return 36;}
 
 	while (i<length){
 
-		if ( i2c_check(true) == false ){i2c_err(); return;}
+		err = i2c_check(false);
+		if (err){i2c_err(); return 37;}
+
 		SSPCON2bits.RCEN = 1;
-		if ( i2c_wait(true) == false ){i2c_err(); return;}
+		//while(SSPCON2bits.RCEN==1);
+		err = i2c_wait(false);
+		if (err){i2c_err(); return 38;}
+
 		*(data+i) = SSPBUF;
-		if ( i2c_check(true) == false ){i2c_err(); return;}
+		err = i2c_check(false);
+		if (err){i2c_err(); return 39;}
 
 		if ( length > i+1 )	SSPCON2bits.ACKDT = 0;     // ACK
 		else				SSPCON2bits.ACKDT = 1;     // NO_ACK
+
 		SSPCON2bits.ACKEN = 1;
-		if ( i2c_check(true) == false ){i2c_err(); return;}
+		//while(SSPCON2bits.ACKEN==1);
+		err = i2c_check(false);
+		if (err){i2c_err(); return err+i;}
 
 		i++;
 	}
 
 	SSPCON2bits.PEN = 1;       // Stop Condition Enable bit
 	while(SSPCON2bits.PEN);
+	PIR1bits.SSPIF = 0;
+
+	return 0;
 
 //	i2c_start();
 //	i2c_send_byte((adrs<<1) | I2C_WRITE_CMD);   // アドレスを1ビット左にシフトし、末尾にR/Wビット（Write=0）を付与
@@ -267,22 +310,26 @@ void readI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char* data,
 void LPS331AP_init( void )
 {
 	//	Init Parameter
-	i2cAdrs = PRESSURE_SENSOR_ADDRESS;
 	writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_RESOLUTION, 0x6A );	//	Resolution
 	writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_PWRON, 0xf0 );	//	Power On
 }
 //-------------------------------------------------------------------------
-int LPS331AP_getPressure( void )
+int LPS331AP_getPressure( int* retPrs )
 {
 	unsigned char	dt[3];
 	float	tmpPrs = 0;
+	int		err;
 
-	i2cAdrs = PRESSURE_SENSOR_ADDRESS;
-	readI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_DT_L|0x80, dt, 3 );
-	tmpPrs = (float)(((unsigned long)dt[2]<<16)|((unsigned long)dt[1]<<8)|dt[0]);
-	tmpPrs = tmpPrs*10/4096;
+	err = readI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_DT_L|0x80, dt, 3 );
 
-	return (int)tmpPrs;
+	if ( !err ){
+		tmpPrs = (float)(((unsigned long)dt[2]<<16)|((unsigned long)dt[1]<<8)|dt[0]);
+		tmpPrs = tmpPrs*10/4096;
+		*retPrs = (int)tmpPrs;
+	}
+	else *retPrs = 0;
+
+	return err;
 }
 
 //-------------------------------------------------------------------------
@@ -309,7 +356,6 @@ void MPR121_init( void )
 {
 	int	i, j;
 
-	i2cAdrs = TOUCH_SENSOR_ADDRESS;
 	//	Init Parameter
 	// Put the MPR into setup mode
 	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_ELE_CFG, 0x00 );
@@ -377,15 +423,17 @@ void MPR121_init( void )
 	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_ELE_CFG, 0x8f );
 }
 //-------------------------------------------------------------------------
-unsigned char MPR121_getTchSwData( void )
+int MPR121_getTchSwData( unsigned char* retSw )
 {
 	unsigned char buf[2];
+	int	err;
 
-	i2cAdrs = TOUCH_SENSOR_ADDRESS;
-	readI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_TOUCH_STATUS1, buf, 2 );
+	err = readI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_TOUCH_STATUS1, buf, 2 );
 
-//	return (buf[1]<<8) | buf[0];
-	return buf[0];
+	if ( !err )	*retSw = buf[0];//	return (buf[1]<<8) | buf[0];
+	else *retSw = 0;
+
+	return err;
 }
 
 //-------------------------------------------------------------------------
@@ -398,32 +446,40 @@ unsigned char MPR121_getTchSwData( void )
 void ADXL345_init( void )
 {
 	//	Start Access
-	i2cAdrs = ACCEL_SENSOR_ADDRESS;
 	writeI2cWithCmd(ACCEL_SENSOR_ADDRESS,ACCEL_SNCR_PWR_CTRL,0x08);			//	Start Measurement
 	writeI2cWithCmd(ACCEL_SENSOR_ADDRESS,ACCEL_SNCR_DATA_FORMAT,0x04);		//	Left Justified
 }
 //-------------------------------------------------------------------------
-void ADXL345_getAccel( signed short* value )
+int ADXL345_getAccel( signed short* value )
 {
 	unsigned short tmp;
 	unsigned char reg[2];
+	int err;
 
-	i2cAdrs = ACCEL_SENSOR_ADDRESS;
+	err = readI2cWithCmd(ACCEL_SENSOR_ADDRESS,0x32,reg,2);
+	if (!err){
+		tmp = reg[0];
+		tmp |= reg[1] << 8;
+		*value = (signed short)tmp;
+	}
+	else return err;
 
-	readI2cWithCmd(ACCEL_SENSOR_ADDRESS,0x32,reg,2);
-	tmp = reg[0];
-	tmp |= reg[1] << 8;
-	*value = (signed short)tmp;
+	err = readI2cWithCmd(ACCEL_SENSOR_ADDRESS,0x34,reg,2);
+	if (!err){
+		tmp = reg[0];
+		tmp |= reg[1] << 8;
+		*(value+1) = (signed short)tmp;
+	}
+	else return err;
 
-	readI2cWithCmd(ACCEL_SENSOR_ADDRESS,0x34,reg,2);
-	tmp = reg[0];
-	tmp |= reg[1] << 8;
-	*(value+1) = (signed short)tmp;
+	err = readI2cWithCmd(ACCEL_SENSOR_ADDRESS,0x36,reg,2);
+	if (!err){
+		tmp = reg[0];
+		tmp |= reg[1] << 8;
+		*(value+2) = (signed short)tmp;
+	}
 
-	readI2cWithCmd(ACCEL_SENSOR_ADDRESS,0x36,reg,2);
-	tmp = reg[0];
-	tmp |= reg[1] << 8;
-	*(value+2) = (signed short)tmp;
+	return err;
 }
 
 //-------------------------------------------------------------------------
@@ -433,7 +489,6 @@ void BlinkM_init( void )
 {
 	unsigned char color[3] = {0x00,0x00,0x00};
 
-	i2cAdrs = LED_BLINKM_ADDRESS;
 	writeI2cWithCmd( LED_BLINKM_ADDRESS, 'o', 0 );
 	writeI2cWithCmd( LED_BLINKM_ADDRESS, 'f', 80 );
 	writeI2cWithCmdAndMultiData( LED_BLINKM_ADDRESS, 'n', color, 3 );
@@ -456,8 +511,7 @@ const unsigned char tNoteToColor[13][3] = {
 	{ 0x00, 0x00, 0x00 }
 };
 //-------------------------------------------------------------------------
-void BlinkM_changeColor( unsigned char note )
+int BlinkM_changeColor( unsigned char note )
 {
-	i2cAdrs = LED_BLINKM_ADDRESS;
-	writeI2cWithCmdAndMultiData( LED_BLINKM_ADDRESS, 'c', (unsigned char*)tNoteToColor[note], 3 );
+	return writeI2cWithCmdAndMultiData( LED_BLINKM_ADDRESS, 'c', (unsigned char*)tNoteToColor[note], 3 );
 }

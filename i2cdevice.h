@@ -17,16 +17,16 @@ extern bool i2cErr;
 void initI2c( void );
 
 void LPS331AP_init( void );
-int LPS331AP_getPressure( void );
+int LPS331AP_getPressure( int* retPrs );
 
 void MPR121_init( void );
-unsigned char MPR121_getTchSwData( void );
+int MPR121_getTchSwData( unsigned char* retSw );
 
 void ADXL345_init( void );
-void ADXL345_getAccel( signed short* value );
+int ADXL345_getAccel( signed short* value );
 
 void BlinkM_init( void );
-void BlinkM_changeColor( unsigned char note );
+int BlinkM_changeColor( unsigned char note );
 
 #ifdef	__cplusplus
 }

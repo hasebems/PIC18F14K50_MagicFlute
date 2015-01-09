@@ -117,6 +117,8 @@ static long			counter10msec;	//	one loop 243 days
 static bool	event10msec, event100msec, event350msec;
 static uint16_t timerStock;
 
+static int i2cComErr;
+
 /*----------------------------------------------------------------------------*/
 //
 //      Common Initialize
@@ -130,6 +132,7 @@ void initCommon( void )
 	crntNote = 96;
 	lastMod = 0;
 	lastPrt = 0;
+	i2cComErr = 0;
 
 	AnalysePressure_Init();
 	AnalyseTouch_init();
@@ -376,7 +379,7 @@ void pressureSensor( void )
 {
 	//  Pressure Sensor
 
-	int	prs = LPS331AP_getPressure();
+	int	prs, err;
 
 #if 0	//	for debug
 	if ( event350msec == true ){
@@ -387,6 +390,8 @@ void pressureSensor( void )
 	}
 #endif
 
+	err = LPS331AP_getPressure(&prs);
+	if ( err != 0 ) i2cComErr = err;
 	AnalysePressure_setNewRawPressure(prs);
 	if ( event10msec == true ){
 		uint8_t mdExp;
@@ -422,8 +427,11 @@ const int tCnvPrtDpt[MAX_ANGLE] = {
 void acceleratorSensor( void )
 {
 	signed short acl[3] = { 0,0,0 };
-	ADXL345_getAccel(acl);
-    int incli = acl[0]/512;
+	int incli, err;
+
+	err = ADXL345_getAccel(acl);
+	if ( err != 0 ) i2cComErr = err + 40;
+	incli = acl[0]/512;
 
 	if ( incli >= MAX_ANGLE ) incli = MAX_ANGLE-1;
 
@@ -457,40 +465,21 @@ void acceleratorSensor( void )
 /*----------------------------------------------------------------------------*/
 void touchSensor( void )
 {
-	uint8_t	tch = MPR121_getTchSwData();
+	uint8_t	tch;
+	int	err;
+
+	err = MPR121_getTchSwData(&tch);
+	if ( err != 0 ) i2cComErr = err + 80;
 	AnalyseTouch_setNewTouch(tch);
 	if ( event10msec ){
 		uint8_t mdNote;
 		if ( AnalyseTouch_catchEventOfPeriodic(&mdNote,counter10msec) == true ){
-			if ( nowPlaying == true ){
+//			if ( nowPlaying == true ){
 				setMidiBuffer(0x90,mdNote,0x7f);
 				setMidiBuffer(0x90,crntNote,0x00);
-			}
+//			}
 	        crntNote = mdNote;
 		}
-	}
-}
-
-/*----------------------------------------------------------------------------*/
-//
-//      Send one event to USB ( just only one event for each time )
-//
-/*----------------------------------------------------------------------------*/
-void sendEventToUsb( void )
-{
-	if ( midiEventReadPointer != midiEventWritePointer ){
-	
-		midiData.Val = 0;   //must set all unused values to 0 so go ahead
-                                    //  and set them all to 0
-		midiData.CableNumber = 1;
-        midiData.CodeIndexNumber = MIDI_CIN_NOTE_ON;
-        midiData.DATA_0 = midiEvent[midiEventReadPointer][0];     // Status Byte
-        midiData.DATA_1 = midiEvent[midiEventReadPointer][1];     // Data Byte 1
-        midiData.DATA_2 = midiEvent[midiEventReadPointer][2];     // Data Byte 2
-        USBTxHandle = USBTxOnePacket(USB_DEVICE_AUDIO_MIDI_ENDPOINT,(uint8_t*)&midiData,4);
-
-		midiEventReadPointer++;
-		midiEventReadPointer &= MIDI_BUF_MAX_MASK;
 	}
 }
 
@@ -529,6 +518,9 @@ void lightFullColorLed( void )
 		}
 		else LED2 = 1;
 	}
+	if ( event100msec == true ){
+		setMidiBuffer(0xb0,0x10,(unsigned char)i2cComErr);
+	}
 
 	//	PWM Full Color LED
 	int doremi = crntNote%12;
@@ -538,6 +530,29 @@ void lightFullColorLed( void )
 	PORTCbits.RC2 = (pwm >= tColorTable[doremi][0])? 1:0;
 	PORTCbits.RC1 = (pwm >= tColorTable[doremi][1])? 1:0;
 	PORTCbits.RC0 = (pwm >= tColorTable[doremi][2])? 1:0;
+}
+
+/*----------------------------------------------------------------------------*/
+//
+//      Send one event to USB ( just only one event for each time )
+//
+/*----------------------------------------------------------------------------*/
+void sendEventToUsb( void )
+{
+	if ( midiEventReadPointer != midiEventWritePointer ){
+
+		midiData.Val = 0;   //must set all unused values to 0 so go ahead
+                                    //  and set them all to 0
+		midiData.CableNumber = 1;
+        midiData.CodeIndexNumber = MIDI_CIN_NOTE_ON;
+        midiData.DATA_0 = midiEvent[midiEventReadPointer][0];     // Status Byte
+        midiData.DATA_1 = midiEvent[midiEventReadPointer][1];     // Data Byte 1
+        midiData.DATA_2 = midiEvent[midiEventReadPointer][2];     // Data Byte 2
+        USBTxHandle = USBTxOnePacket(USB_DEVICE_AUDIO_MIDI_ENDPOINT,(uint8_t*)&midiData,4);
+
+		midiEventReadPointer++;
+		midiEventReadPointer &= MIDI_BUF_MAX_MASK;
+	}
 }
 
 /*----------------------------------------------------------------------------*/
@@ -580,18 +595,20 @@ void main(void)
 		//	Test with Tact Swtich
 		testNoteEvent();
 
+		//  Touch Sensor
+		touchSensor();
+
 		//	Air Pressure Sensor
 		pressureSensor();
 
 		//  accelerator sensor
 		acceleratorSensor();
 	
-		//  Touch Sensor
-		touchSensor();
-
-		sendEventToUsb();
-
+		//	Display
 		lightFullColorLed();
+
+		//	USB MIDI Out
+		sendEventToUsb();
 	}
 
 	return;
