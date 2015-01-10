@@ -20,15 +20,16 @@
 #include	"analyse_pressure.h"
 #include	"analyse_touch.h"
 
-// #pragma config statements should precede project file includes.
-// Use project enums instead of #define for ON and OFF.
-
+/*----------------------------------------------------------------------------*/
 #ifndef _XTAL_FREQ
     /* 例：4MHzの場合、4000000 をセットする */
     #define _XTAL_FREQ 48000000
 #endif
 //#define __delay_us(x) _delay((unsigned long)((x)*(_XTAL_FREQ/4000000UL)))
 //#define __delay_ms(x) _delay((unsigned long)((x)*(_XTAL_FREQ/4000UL)))
+
+// #pragma config statements should precede project file includes.
+// Use project enums instead of #define for ON and OFF.
 
 // CONFIG1L
 #pragma config CPUDIV = NOCLKDIV// CPU System Clock Selection bits (No CPU System Clock divide)
@@ -47,8 +48,8 @@
 #pragma config BORV = 19        // Brown-out Reset Voltage bits (VBOR set to 1.9 V nominal)
 
 // CONFIG2H
-#pragma config WDTEN = ON       // Watchdog Timer Enable bit (WDT is always enabled. SWDTEN bit has no effect.)
-#pragma config WDTPS = 32768    // Watchdog Timer Postscale Select bits (1:32768)
+#pragma config WDTEN = OFF      // Watchdog Timer Enable bit (WDT is controlled by SWDTEN bit of the WDTCON register)
+#pragma config WDTPS = 1        // Watchdog Timer Postscale Select bits (1:1)
 
 // CONFIG3H
 #pragma config HFOFST = ON      // HFINTOSC Fast Start-up bit (HFINTOSC starts clocking the CPU without waiting for the oscillator to stablize.)
@@ -88,6 +89,12 @@
 #define	SW1         PORTCbits.RC7
 #define	LED         PORTCbits.RC6
 #define	LED2         PORTCbits.RC5
+
+/*----------------------------------------------------------------------------*/
+#define		USE_I2C_PRESSURE_SENSOR			1
+#define		USE_I2C_ACCELERATOR_SENSOR		0
+#define		USE_I2C_TOUCH_SENSOR			1
+#define		USE_I2C_BLINKM					1
 
 /*----------------------------------------------------------------------------*/
 //
@@ -146,11 +153,19 @@ void initCommon( void )
 void initAllI2cHw( void )
 {
 	initI2c();
-	LPS331AP_init();
-	MPR121_init();
-	ADXL345_init();
 
-//	BlinkM_init();
+#if USE_I2C_PRESSURE_SENSOR
+	LPS331AP_init();
+#endif
+#if USE_I2C_TOUCH_SENSOR
+	MPR121_init();
+#endif
+#if USE_I2C_ACCELERATOR_SENSOR
+	ADXL345_init();
+#endif
+#if USE_I2C_BLINKM
+	BlinkM_init();
+#endif
 }
 
 /*----------------------------------------------------------------------------*/
@@ -360,7 +375,9 @@ void testNoteEvent( void )
         if ( sentNoteOff == true ){
 			setMidiBuffer( 0x90, ++pitch, 0x7f );
             sentNoteOff = false;
-			//BlinkM_changeColor(pitch%12);
+#if USE_I2C_BLINKM
+			BlinkM_changeColor(pitch%12);
+#endif
 		}
     }
     else {
@@ -370,7 +387,9 @@ void testNoteEvent( void )
 				pitch = 0x3C;
             }
             sentNoteOff = true;
-			//BlinkM_changeColor(12);
+#if USE_I2C_BLINKM
+			BlinkM_changeColor(12);
+#endif
 		}
     }
 }
@@ -474,10 +493,14 @@ void touchSensor( void )
 	if ( event10msec ){
 		uint8_t mdNote;
 		if ( AnalyseTouch_catchEventOfPeriodic(&mdNote,counter10msec) == true ){
-//			if ( nowPlaying == true ){
+			if ( nowPlaying == true ){
 				setMidiBuffer(0x90,mdNote,0x7f);
 				setMidiBuffer(0x90,crntNote,0x00);
-//			}
+			}
+			else {
+				setMidiBuffer(0x90,mdNote,0x01);
+				setMidiBuffer(0x90,crntNote,0x00);
+			}
 	        crntNote = mdNote;
 		}
 	}
@@ -510,7 +533,7 @@ void lightFullColorLed( void )
 	//	Heartbeat
 	LED = ((counter10msec & 0x001e) == 0x0000)? 1:0;		//	350msec
 
-	//	Debug
+	//	Debug by using LED
 	if ( i2cErr == true ){
 		if ( event100msec == true ){
 			LED2 = 0;
@@ -518,8 +541,12 @@ void lightFullColorLed( void )
 		}
 		else LED2 = 1;
 	}
+
+	//	Debug by using USB MIDI
 	if ( event100msec == true ){
-		setMidiBuffer(0xb0,0x10,(unsigned char)i2cComErr);
+		if ( i2cComErr != 0 ){
+			setMidiBuffer(0xb0,0x10,(unsigned char)i2cComErr);
+		}
 	}
 
 	//	PWM Full Color LED
@@ -596,14 +623,19 @@ void main(void)
 		testNoteEvent();
 
 		//  Touch Sensor
+#if USE_I2C_TOUCH_SENSOR
 		touchSensor();
+#endif
 
 		//	Air Pressure Sensor
+#if USE_I2C_PRESSURE_SENSOR
 		pressureSensor();
+#endif
 
 		//  accelerator sensor
+#if USE_I2C_ACCELERATOR_SENSOR
 		acceleratorSensor();
-	
+#endif
 		//	Display
 		lightFullColorLed();
 

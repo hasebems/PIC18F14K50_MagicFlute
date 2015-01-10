@@ -53,7 +53,7 @@ void quitI2c( void )
 // I2C通信がビジー状態を脱するまで待つ
 int i2c_checkWrite( bool target ){
 	volatile int cnt=0;
-    while ( SSPCON2bits.ACKSTAT || ( SSPSTAT & 0x01 ) ){	//	Buffer Full Check
+    while ( SSPCON2bits.ACKSTAT || ( SSPSTAT & 0x05 ) ){	//	Buffer Full Check
 		if ( cnt++ > 1000 ){
 			i2cErr = i2cErr||target;
 			return (int)(SSPCON2 & 0x5f);
@@ -75,7 +75,7 @@ int i2c_checkRead( bool target ){
 //-------------------------------------------------------------------------
 int i2c_check( bool target ){
 	volatile int cnt=0;
-    while ( ( SSPCON2 & 0x5F ) || ( SSPSTAT & 0x05 ) ){	//	Buffer Full Check
+    while ( ( SSPCON2 & 0x1F ) || ( SSPSTAT & 0x05 ) ){	//	Buffer Full Check
 		if ( cnt++ > 1000 ){
 			i2cErr = i2cErr||target;
 			return (int)(SSPCON2 & 0x5f);
@@ -116,11 +116,11 @@ int writeI2c( unsigned char adrs, unsigned char data )
 	while(SSPCON2bits.SEN);
 
 	SSPBUF = (adrs<<1) | I2C_WRITE_CMD;
-	err = i2c_check(false);
+	err = i2c_checkWrite(false);
     if (err){i2c_err(); return 1;}
 
 	SSPBUF = data;
-	err = i2c_check(false);
+	err = i2c_checkWrite(false);
     if (err){i2c_err(); return 1;}
 
 	SSPCON2bits.PEN = 1;       // Stop Condition Enable bit
@@ -146,15 +146,15 @@ int writeI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char data )
 	while(SSPCON2bits.SEN);
 
 	SSPBUF = (adrs<<1) | I2C_WRITE_CMD;
-	err = i2c_check(false);
+	err = i2c_checkWrite(false);
 	if (err){i2c_err(); return 1;}
 
 	SSPBUF = cmd;
-	err = i2c_check(false);
+	err = i2c_checkWrite(false);
 	if (err){i2c_err(); return 1;}
 
 	SSPBUF = data;
-	err = i2c_check(false);
+	err = i2c_checkWrite(false);
 	if (err){i2c_err(); return 1;}
 
 	SSPCON2bits.PEN = 1;       // Stop Condition Enable bit
@@ -181,16 +181,16 @@ int writeI2cWithCmdAndMultiData( unsigned char adrs, unsigned char cmd, unsigned
 	while(SSPCON2bits.SEN);
 
 	SSPBUF = (adrs<<1) | I2C_WRITE_CMD;
-	err = i2c_check(false);
+	err = i2c_checkWrite(false);
     if (err){i2c_err(); return 1;}
 
 	SSPBUF = cmd;
-	err = i2c_check(false);
+	err = i2c_checkWrite(false);
     if (err){i2c_err(); return 1;}
 
 	while (i<length){
 		SSPBUF = *(data+i);
-		err = i2c_check(false);
+		err = i2c_checkWrite(false);
 		if (err){i2c_err(); return 1;}
 		i++;
 	}
@@ -246,8 +246,8 @@ int readI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char* data, 
 
 	while (i<length){
 
-		err = i2c_check(false);
-		if (err){i2c_err(); return 37;}
+		//err = i2c_check(false);
+		//if (err){i2c_err(); return 37;}
 
 		SSPCON2bits.RCEN = 1;
 		//while(SSPCON2bits.RCEN==1);
