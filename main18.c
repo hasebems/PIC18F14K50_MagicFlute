@@ -86,15 +86,16 @@
 #pragma config EBTRB = OFF      // Boot Block Table Read Protection bit (Boot block not protected from table reads executed in other blocks)
 
 
-#define	SW1         PORTCbits.RC7
-#define	LED         PORTCbits.RC6
-#define	LED2         PORTCbits.RC5
+#define	SW1			PORTCbits.RC7
+#define	SW2			PORTCbits.RC6
+#define	LED			PORTCbits.RC5
+#define	LED2		PORTCbits.RC4
 
 /*----------------------------------------------------------------------------*/
 #define		USE_I2C_PRESSURE_SENSOR			1
-#define		USE_I2C_ACCELERATOR_SENSOR		0
+#define		USE_I2C_ACCELERATOR_SENSOR		1
 #define		USE_I2C_TOUCH_SENSOR			1
-#define		USE_I2C_BLINKM					1
+#define		USE_I2C_BLINKM					0
 
 /*----------------------------------------------------------------------------*/
 //
@@ -181,7 +182,7 @@ void initMain(void)
 	//    ADCON1  =	0b00001111;
     TRISA   =	0b00000000;			//D-,D+
     TRISB   =	0b01010000;			//I2C master mode
-    TRISC   =	0b10000000;			//SW1
+    TRISC   =	0b11000000;			//SW1
 
 	ANSEL	=	0b00000000;			//not use ADC. use PORT
 	ANSELH	=	0b00000000;
@@ -498,8 +499,8 @@ void touchSensor( void )
 				setMidiBuffer(0x90,crntNote,0x00);
 			}
 			else {
-				setMidiBuffer(0x90,mdNote,0x01);
-				setMidiBuffer(0x90,crntNote,0x00);
+				setMidiBuffer(0xa0,mdNote,0x01);
+				setMidiBuffer(0xa0,crntNote,0x00);
 			}
 	        crntNote = mdNote;
 		}
