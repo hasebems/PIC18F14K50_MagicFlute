@@ -20,6 +20,8 @@
 #include	"analyse_pressure.h"
 #include	"analyse_touch.h"
 
+#include	"mfconfig.h"
+
 /*----------------------------------------------------------------------------*/
 #ifndef _XTAL_FREQ
     /* 例：4MHzの場合、4000000 をセットする */
@@ -91,11 +93,6 @@
 #define	LED			PORTCbits.RC5
 #define	LED2		PORTCbits.RC4
 
-/*----------------------------------------------------------------------------*/
-#define		USE_I2C_PRESSURE_SENSOR			1
-#define		USE_I2C_ACCELERATOR_SENSOR		1
-#define		USE_I2C_TOUCH_SENSOR			1
-#define		USE_I2C_BLINKM					0
 
 /*----------------------------------------------------------------------------*/
 //
@@ -263,7 +260,6 @@ void USBMIDIInitialize()
 void APP_DeviceAudioMIDISOFHandler()
 {
 }
-
 /*----------------------------------------------------------------------------*/
 //
 //      USB Callback Function
@@ -273,7 +269,13 @@ bool USER_USB_CALLBACK_EVENT_HANDLER(USB_EVENT event, void *pdata, uint16_t size
 {
     switch( (int) event )
     {
-        case EVENT_TRANSFER:
+        case EVENT_CONFIGURED:
+            /* When the device is configured, we can (re)initialize the demo
+             * code. */
+            USBMIDIInitialize();
+            break;
+#if 0
+		case EVENT_TRANSFER:
             break;
 
         case EVENT_SOF:
@@ -290,12 +292,6 @@ bool USER_USB_CALLBACK_EVENT_HANDLER(USB_EVENT event, void *pdata, uint16_t size
             /* Update the LED status for the resume event. */
             break;
 
-        case EVENT_CONFIGURED:
-            /* When the device is configured, we can (re)initialize the demo
-             * code. */
-            USBMIDIInitialize();
-            break;
-
         case EVENT_SET_DESCRIPTOR:
             break;
 
@@ -307,7 +303,7 @@ bool USER_USB_CALLBACK_EVENT_HANDLER(USB_EVENT event, void *pdata, uint16_t size
 
         case EVENT_TRANSFER_TERMINATED:
             break;
-
+#endif
         default:
             break;
     }

@@ -10,6 +10,8 @@
 #include <stdbool.h>
 #include <xc.h>
 
+#include	"mfconfig.h"
+
 //-------------------------------------------------------------------------
 //			Constants
 //-------------------------------------------------------------------------
@@ -342,7 +344,8 @@ int LPS331AP_getPressure( int* retPrs )
 #define 	TCH_SNCR_MHD_R				0x2b
 #define 	TCH_SNCR_MHD_F				0x2f
 #define 	TCH_SNCR_ELE0_T				0x41
-#define 	TCH_SNCR_FIL_CFG			0x5d
+#define 	TCH_SNCR_FIL_CFG1			0x5c
+#define 	TCH_SNCR_FIL_CFG2			0x5d
 #define 	TCH_SNCR_MHDPROXR			0x36
 #define 	TCH_SNCR_EPROXTTH			0x59
 
@@ -417,10 +420,11 @@ void MPR121_init( void )
     for ( i=0; i<2; i++ )
 		writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_EPROXTTH+i, proxThresh[i] );
 
-	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_FIL_CFG, 0x04 );
+	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_FIL_CFG1, 0x10 );
+	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_FIL_CFG2, 0x24 );
 
     // Set the electrode config to transition to active mode
-	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_ELE_CFG, 0x8f );
+	writeI2cWithCmd( TOUCH_SENSOR_ADDRESS, TCH_SNCR_ELE_CFG, 0x86 );
 }
 //-------------------------------------------------------------------------
 int MPR121_getTchSwData( unsigned char* retSw )
@@ -485,6 +489,7 @@ int ADXL345_getAccel( signed short* value )
 //-------------------------------------------------------------------------
 //			BlinkM ( Full Color LED : I2c Device)
 //-------------------------------------------------------------------------
+#if USE_I2C_BLINKM
 void BlinkM_init( void )
 {
 	unsigned char color[3] = {0x00,0x00,0x00};
@@ -515,3 +520,4 @@ int BlinkM_changeColor( unsigned char note )
 {
 	return writeI2cWithCmdAndMultiData( LED_BLINKM_ADDRESS, 'c', (unsigned char*)tNoteToColor[note], 3 );
 }
+#endif
