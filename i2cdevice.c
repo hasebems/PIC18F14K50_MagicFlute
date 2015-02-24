@@ -311,9 +311,13 @@ int readI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char* data, 
 //-------------------------------------------------------------------------
 void LPS331AP_init( void )
 {
+#if USE_PRESSURE_SENSOR_LPS25H
+	writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_PWRON, 0xc0 );	//	Power On
+#else
 	//	Init Parameter
 	writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_RESOLUTION, 0x6A );	//	Resolution
 	writeI2cWithCmd( PRESSURE_SENSOR_ADDRESS, PRES_SNCR_PWRON, 0xf0 );	//	Power On
+#endif
 }
 //-------------------------------------------------------------------------
 int LPS331AP_getPressure( int* retPrs )

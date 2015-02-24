@@ -121,8 +121,50 @@ static uint8_t lastMod, lastPrt;
 static long			counter10msec;	//	one loop 243 days
 static bool	event10msec, event100msec, event350msec;
 static uint16_t timerStock;
+static uint8_t	tmr2Cnt;
 
 static int i2cComErr;
+
+
+/*----------------------------------------------------------------------------*/
+//
+//      Full Color LED by Interrupt
+//
+/*----------------------------------------------------------------------------*/
+const unsigned char tColorTable[13][3] = {
+    //  R     G     B
+    { 0xff,  0x00,  0x00  },   //  red		C
+    { 0xd0,  0x30,  0x00  },   //  red		C#
+    { 0xb0,  0x50,  0x00  },   //  orange	D
+    { 0xa0,  0x60,  0x00  },   //  orange	D#
+    { 0x80,  0x80,  0x00  },   //  yellow	E
+    { 0x00,  0xff,  0x00  },   //  green	F
+    { 0x00,  0x80,  0x80  },   //  green	F#
+    { 0x00,  0x00,  0xff  },   //  blue		G
+    { 0x20,  0x00,  0xe0  },   //  blue		G#
+    { 0x40,  0x00,  0xc0  },   //  violet	A
+    { 0x60,  0x00,  0xa0  },   //  violet	A#
+    { 0xc0,  0x00,  0x40  },   //  violet	B
+    { 0x00,  0x00,  0x00  }    //  none
+};
+//-------------------------------------------------------------------------
+void interrupt lightFullColorLed( void )
+{
+    if (TMR2IF == 1) {          // タイマー2の割込み発生か？
+		TMR2IF = 0 ;            // タイマー2割込フラグをリセット
+		tmr2Cnt += 0x10 ;       // 割込み発生の回数をカウントする
+
+		//	PWM Full Color LED
+		int doremi = crntNote%12;
+		//unsigned char pwm = (unsigned char)(tmr2Cnt & 0x00ff);
+
+		if ( nowPlaying == false ) doremi = 12;
+		PORTCbits.RC2 = (tmr2Cnt >= tColorTable[doremi][0])? 1:0;
+		PORTCbits.RC1 = (tmr2Cnt >= tColorTable[doremi][1])? 1:0;
+		PORTCbits.RC0 = (tmr2Cnt >= tColorTable[doremi][2])? 1:0;
+	}
+}
+
 
 /*----------------------------------------------------------------------------*/
 //
@@ -197,6 +239,17 @@ void initMain(void)
 	LED		= 0;
 	LED2	= 0;
 
+	// Interrupt by TIMER2
+	tmr2Cnt = 0 ;             // 割込み発生の回数カウンターを0にする
+	T2CON  = 0b00000111 ;    // TMR2プリスケーラ1:16、ポストスケーラ1:1の設定 (48/4*16MHz) 1.333...usec
+	PR2    = 187 ;           // タイマーのカウント値を設定 250usec
+	TMR2   = 0 ;             // タイマー2の初期化
+	TMR2IF = 0 ;             // タイマー2割込フラグを0にする
+	TMR2IE = 1 ;             // タイマー2割込みを許可する
+	PEIE   = 1 ;             // 周辺装置割り込み有効
+	GIE    = 1 ;             // 全割込み処理を許可する
+
+
 	//	Initialize Variables only when the power turns on
 	for ( i=0; i<MIDI_BUF_MAX; i++ ){
 		midiEvent[i][0] = 0;
@@ -216,18 +269,13 @@ void initMain(void)
 	initCommon();
 }
 
-/*********************************************************************
-* Function: void APP_DeviceAudioMIDIInitialize(void);
-*
-* Overview: Initializes the demo code
-*
-* PreCondition: None
-*
-* Input: None
-*
-* Output: None
-*
-********************************************************************/
+/*----------------------------------------------------------------------------*/
+//
+//	Function: void USBMIDIInitialize(void);
+//
+//	Overview: Initializes the demo code
+//
+/*----------------------------------------------------------------------------*/
 void USBMIDIInitialize()
 {
     USBTxHandle = NULL;
@@ -245,18 +293,11 @@ void USBMIDIInitialize()
     USBRxHandle = USBRxOnePacket(USB_DEVICE_AUDIO_MIDI_ENDPOINT,(uint8_t*)&ReceivedDataBuffer,64);
 }
 
-/*********************************************************************
-* Function: void APP_DeviceAudioMIDIInitialize(void);
-*
-* Overview: Initializes the demo code
-*
-* PreCondition: None
-*
-* Input: None
-*
-* Output: None
-*
-********************************************************************/
+/*----------------------------------------------------------------------------*/
+//
+//	Function: void APP_DeviceAudioMIDISOFHandler(void);
+//
+/*----------------------------------------------------------------------------*/
 void APP_DeviceAudioMIDISOFHandler()
 {
 }
@@ -505,27 +546,10 @@ void touchSensor( void )
 
 /*----------------------------------------------------------------------------*/
 //
-//      Full Color LED
+//      Debug by using MIDI / extra LED
 //
 /*----------------------------------------------------------------------------*/
-const unsigned char tColorTable[13][3] = {
-    //  R     G     B
-    { 0xff,  0x00,  0x00  },   //  red		C
-    { 0xd0,  0x30,  0x00  },   //  red		C#
-    { 0xb0,  0x50,  0x00  },   //  orange	D
-    { 0xa0,  0x60,  0x00  },   //  orange	D#
-    { 0x80,  0x80,  0x00  },   //  yellow	E
-    { 0x00,  0xff,  0x00  },   //  green	F
-    { 0x00,  0x80,  0x80  },   //  green	F#
-    { 0x00,  0x00,  0xff  },   //  blue		G
-    { 0x20,  0x00,  0xe0  },   //  blue		G#
-    { 0x40,  0x00,  0xc0  },   //  violet	A
-    { 0x60,  0x00,  0xa0  },   //  violet	A#
-    { 0xc0,  0x00,  0x40  },   //  violet	B
-    { 0x00,  0x00,  0x00  }    //  none
-};
-//-------------------------------------------------------------------------
-void lightFullColorLed( void )
+void midiOutDebugCode( void )
 {
 	//	Heartbeat
 	LED = ((counter10msec & 0x001e) == 0x0000)? 1:0;		//	350msec
@@ -545,15 +569,6 @@ void lightFullColorLed( void )
 			setMidiBuffer(0xb0,0x10,(unsigned char)i2cComErr);
 		}
 	}
-
-	//	PWM Full Color LED
-	int doremi = crntNote%12;
-	unsigned char pwm = (unsigned char)((timerStock>>2) & 0x00ff);
-
-	if ( nowPlaying == false ) doremi = 12;
-	PORTCbits.RC2 = (pwm >= tColorTable[doremi][0])? 1:0;
-	PORTCbits.RC1 = (pwm >= tColorTable[doremi][1])? 1:0;
-	PORTCbits.RC0 = (pwm >= tColorTable[doremi][2])? 1:0;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -591,6 +606,7 @@ void main(void)
 	USBDeviceInit();
 
     while(1){
+		//	Increment Counter & Make Timer Event
 		generateCounter();
 
 		//	USB
@@ -633,8 +649,8 @@ void main(void)
 #if USE_I2C_ACCELERATOR_SENSOR
 		acceleratorSensor();
 #endif
-		//	Display
-		lightFullColorLed();
+		//	Debug by using MIDI
+		midiOutDebugCode();
 
 		//	USB MIDI Out
 		sendEventToUsb();
