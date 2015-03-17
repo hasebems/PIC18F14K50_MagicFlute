@@ -17,7 +17,7 @@ extern "C" {
 #define		USE_I2C_TOUCH_SENSOR			1
 #define		USE_I2C_BLINKM				0
 
-#define         USE_PRESSURE_SENSOR_LPS25H              0   // 0:LPS331AP
+#define         USE_PRESSURE_SENSOR_LPS25H              1   // 0:LPS331AP
 
 #ifdef	__cplusplus
 }
