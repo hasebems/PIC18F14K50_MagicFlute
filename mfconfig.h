@@ -19,7 +19,7 @@ extern "C" {
 
 #define         USE_PRESSURE_SENSOR_LPS25H              1   // 0:LPS331AP
 
-#define         MF_OCARINA_TYPE                         1   //  0:Recorder Type, 1:Ocarina Type
+#define         MF_OCARINA_TYPE                         0   //  0:Recorder Type, 1:Ocarina Type
 
 #ifdef	__cplusplus
 }

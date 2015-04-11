@@ -24,7 +24,7 @@
 
 /*----------------------------------------------------------------------------*/
 #ifndef _XTAL_FREQ
-    /* 例：4MHzの場合、4000000 をセットする */
+    /* In case of 4MHz, Set 4000000 */
     #define _XTAL_FREQ 48000000
 #endif
 //#define __delay_us(x) _delay((unsigned long)((x)*(_XTAL_FREQ/4000000UL)))
@@ -140,41 +140,41 @@ static int i2cComErr;
 //      Full Color LED by Interrupt
 //
 /*----------------------------------------------------------------------------*/
-const unsigned char tColorTable[13][3][2] = {
-    //  R			G			   B
-	{ {0xff,0x20},  {0x00,0x00},  {0x00,0x00}  },   //  red		C
-	{ {0xd0,0xd0},  {0x30,0x06},  {0x00,0x00}  },   //  red		C#
-	{ {0xb0,0x16},  {0x50,0x0a},  {0x00,0x00}  },   //  orange	D
-	{ {0xa0,0x14},  {0x60,0x0c},  {0x00,0x00}  },   //  orange	D#
-	{ {0x60,0x0c},  {0xa0,0x14},  {0x00,0x00}  },   //  yellow	E
-	{ {0x00,0x00},  {0xff,0x20},  {0x00,0x00}  },   //  green	F
-	{ {0x00,0x00},  {0x80,0x10},  {0x80,0x10}  },   //  green	F#
-	{ {0x00,0x00},  {0x00,0x00},  {0xff,0x20}  },   //  blue	G
-	{ {0x20,0x04},  {0x00,0x00},  {0xe0,0x1c}  },   //  blue	G#
-	{ {0x40,0x08},  {0x00,0x00},  {0xc0,0x18}  },   //  violet	A
-	{ {0x60,0x0c},  {0x00,0x00},  {0xa0,0x14}  },   //  violet	A#
-	{ {0xc0,0x18},  {0x00,0x00},  {0x40,0x08}  },   //  violet	B
-	{ {0x00,0x00},  {0x00,0x00},  {0x00,0x00}  }    //  none
+const unsigned char tColorTable[13][3] = {
+
+	//	this Value * midiExp(0-127) / 16 = 0x00-0xfe : PWM count value
+	// R	 G		B
+	{ 0x20,  0x00,  0x00  },   //  red		C
+	{ 0x1a,  0x06,  0x00  },   //  red		C#
+	{ 0x16,  0x0a,  0x00  },   //  orange	D
+	{ 0x14,  0x0c,  0x00  },   //  orange	D#
+	{ 0x0c,  0x14,  0x00  },   //  yellow	E
+	{ 0x00,  0x20,  0x00  },   //  green	F
+	{ 0x00,  0x10,  0x10  },   //  green	F#
+	{ 0x00,  0x00,  0x20  },   //  blue		G
+	{ 0x04,  0x00,  0x1c  },   //  blue		G#
+	{ 0x08,  0x00,  0x18  },   //  violet	A
+	{ 0x0c,  0x00,  0x14  },   //  violet	A#
+	{ 0x18,  0x00,  0x08  },   //  violet	B
+	{ 0x00,  0x00,  0x00  },   //  none
 };
 //-------------------------------------------------------------------------
 void interrupt lightFullColorLed( void )
 {
-    if (TMR2IF == 1) {          // タイマー2の割込み発生か？
-		TMR2IF = 0 ;            // タイマー2割込フラグをリセット
-		tmr2Cnt += 0x04 ;       // 割込み発生の回数をカウントする
+    if (TMR2IF == 1) {          // Timer2 Interrupt?
+		TMR2IF = 0 ;            // reset of Timer2 Interrupt
+		tmr2Cnt += 0x04 ;       // PWM resolution
 
 		//	PWM Full Color LED
-		uint8_t ledCnt;
-		uint8_t	shifter = (127-midiExp)>>4;	//	0-127 : 7-0
+		uint16_t ledCnt;
+		ledCnt = ((uint16_t)tColorTable[doremi][0]*midiExp)>>4;
+		PORTCbits.RC2 = ((uint16_t)tmr2Cnt >= ledCnt)? 1:0;
 
-		ledCnt = tColorTable[doremi][0][0] - (tColorTable[doremi][0][1]*shifter);
-		PORTCbits.RC2 = (tmr2Cnt >= ledCnt)? 1:0;
+		ledCnt = ((uint16_t)tColorTable[doremi][1]*midiExp)>>4;
+		PORTCbits.RC1 = ((uint16_t)tmr2Cnt >= ledCnt)? 1:0;
 
-		ledCnt = tColorTable[doremi][1][0] - (tColorTable[doremi][1][1]*shifter);
-		PORTCbits.RC1 = (tmr2Cnt >= ledCnt)? 1:0;
-
-		ledCnt = tColorTable[doremi][2][0] - (tColorTable[doremi][2][1]*shifter);
-		PORTCbits.RC0 = (tmr2Cnt >= ledCnt)? 1:0;
+		ledCnt = ((uint16_t)tColorTable[doremi][2]*midiExp)>>4;
+		PORTCbits.RC0 = ((uint16_t)tmr2Cnt >= ledCnt)? 1:0;
 	}
 }
 
@@ -254,14 +254,14 @@ void initMain(void)
 	LED2	= 0;
 
 	// Interrupt by TIMER2
-	tmr2Cnt = 0 ;             // 割込み発生の回数カウンターを0にする
-	T2CON  = 0b00000111 ;    // TMR2プリスケーラ1:16、ポストスケーラ1:1の設定 (48/4*16MHz) 1.333...usec
-	PR2    = 187 ;           // タイマーのカウント値を設定 250usec
-	TMR2   = 0 ;             // タイマー2の初期化
-	TMR2IF = 0 ;             // タイマー2割込フラグを0にする
-	TMR2IE = 1 ;             // タイマー2割込みを許可する
-	PEIE   = 1 ;             // 周辺装置割り込み有効
-	GIE    = 1 ;             // 全割込み処理を許可する
+	tmr2Cnt = 0 ;					// PWM Counter clear
+	T2CON  = 0b00000111 ;			// TMR2 prescaler 1:16, postscaler 1:1 (48/4*16MHz) 1.333...usec
+	PR2    = 187 ;					// TMR2 interrupt count Interval: 250usec
+	TMR2   = 0 ;					// Initialize
+	TMR2IF = 0 ;					// clear TMR2 Interrupt flag
+	TMR2IE = 1 ;					// enable TMR2 interrupt
+	PEIE   = 1 ;					// enable peripheral　interrupt
+	GIE    = 1 ;					// enable all interrupt
 
 
 	//	Initialize Variables only when the power turns on
@@ -609,8 +609,8 @@ void sendEventToUsb( void )
 		midiData.CodeIndexNumber = statusByte >> 4;
 
         midiData.DATA_0 = statusByte;								// Status Byte
-        midiData.DATA_1 = midiEvent[midiEventReadPointer][1];     // Data Byte 1
-        midiData.DATA_2 = midiEvent[midiEventReadPointer][2];     // Data Byte 2
+        midiData.DATA_1 = midiEvent[midiEventReadPointer][1];		// Data Byte 1
+        midiData.DATA_2 = midiEvent[midiEventReadPointer][2];		// Data Byte 2
         USBTxHandle = USBTxOnePacket(USB_DEVICE_AUDIO_MIDI_ENDPOINT,(uint8_t*)&midiData,4);
 
 		midiEventReadPointer++;
