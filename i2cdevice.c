@@ -15,27 +15,22 @@
 //-------------------------------------------------------------------------
 //			Constants
 //-------------------------------------------------------------------------
-//static unsigned char GPIO_EXPANDER_ADDRESS = 0x3e;
-static unsigned char PRESSURE_SENSOR_ADDRESS = 0x5d;
-static unsigned char TOUCH_SENSOR_ADDRESS = 0x5a;
-static unsigned char LED_BLINKM_ADDRESS = 0x09;
-//static unsigned char ADC_ADDRESS = 0x48;
-//static unsigned char LED_ADA88_ADDRESS = 0x70;
-static unsigned char ACCEL_SENSOR_ADDRESS = 0x1d;
+//static const unsigned char GPIO_EXPANDER_ADDRESS = 0x3e;
+static const unsigned char PRESSURE_SENSOR_ADDRESS = 0x5d;
+static const unsigned char TOUCH_SENSOR_ADDRESS = 0x5a;
+static const unsigned char LED_BLINKM_ADDRESS = 0x09;
+//static const unsigned char ADC_ADDRESS = 0x48;
+//static const unsigned char LED_ADA88_ADDRESS = 0x70;
+static const unsigned char ACCEL_SENSOR_ADDRESS = 0x1d;
 
 // I2C Bus Control Definition
 #define I2C_WRITE_CMD 0
 #define I2C_READ_CMD 1
 
+bool i2cErr;
+
 //-------------------------------------------------------------------------
 //			I2C Basic Functions
-//-------------------------------------------------------------------------
-//#ifndef _XTAL_FREQ
-    /* 例：4MHzの場合、4000000 をセットする */
-//    #define _XTAL_FREQ 48000000
-//#endif
-
-bool i2cErr;
 //-------------------------------------------------------------------------
 void initI2c( void )
 {

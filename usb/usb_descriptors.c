@@ -159,8 +159,8 @@ const USB_DEVICE_DESCRIPTOR device_dsc=
     0x00,                   // Subclass code
     0x00,                   // Protocol code
     USB_EP0_BUFF_SIZE,          // Max packet size for EP0, see usb_config.h
-    0x04D8,                 // Vendor ID
-    0x0059,                 // Product ID: Audio MIDI example
+    0x22ea,                 // Vendor ID
+    0x003c,                 // Product ID: Audio MIDI example
     0x0002,                 // Device release number in BCD format
     0x01,                   // Manufacturer string index
     0x02,                   // Product string index
@@ -217,7 +217,7 @@ const uint8_t configDescriptor1[]={
     0x24,       //bDescriptorType - CS_INTERFACE
     0x01,       //bDescriptorSubtype - MS_HEADER
     0x00,0x01,  //BcdADC
-    0x41,0x00,  //wTotalLength
+    0x25,0x00,  //wTotalLength
 
     /* MIDI Adapter MIDI IN Jack Descriptor (Embedded) */
     0x06,       //bLength
@@ -308,7 +308,7 @@ sizeof(sd001),USB_DESCRIPTOR_STRING,
 //Product string descriptor
 const struct{uint8_t bLength;uint8_t bDscType;uint16_t string[12];}sd002={
 sizeof(sd002),USB_DESCRIPTOR_STRING,
-{'M','a','g','i','c',' ','F','l','u','t','e',' '}};
+{'M','a','g','i','c','F','l','u','t','e',' '}};
 
 //Array of configuration descriptors
 const uint8_t *const USB_CD_Ptr[]=

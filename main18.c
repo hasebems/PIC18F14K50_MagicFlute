@@ -93,6 +93,13 @@
 #define	LED			PORTCbits.RC5
 #define	LED2		PORTCbits.RC4
 
+/*----------------------------------------------------------------------------*/
+//
+//      Macros
+//
+/*----------------------------------------------------------------------------*/
+#define	NO_NOTE		12
+
 
 /*----------------------------------------------------------------------------*/
 //
@@ -117,6 +124,8 @@ static int	midiEventWritePointer;
 static bool nowPlaying;
 static uint8_t crntNote;
 static uint8_t lastMod, lastPrt;
+static uint8_t midiExp;
+static int doremi;
 
 static long			counter10msec;	//	one loop 243 days
 static bool	event10msec, event100msec, event350msec;
@@ -131,37 +140,41 @@ static int i2cComErr;
 //      Full Color LED by Interrupt
 //
 /*----------------------------------------------------------------------------*/
-const unsigned char tColorTable[13][3] = {
-    //  R     G     B
-    { 0xff,  0x00,  0x00  },   //  red		C
-    { 0xd0,  0x30,  0x00  },   //  red		C#
-    { 0xb0,  0x50,  0x00  },   //  orange	D
-    { 0xa0,  0x60,  0x00  },   //  orange	D#
-    { 0x80,  0x80,  0x00  },   //  yellow	E
-    { 0x00,  0xff,  0x00  },   //  green	F
-    { 0x00,  0x80,  0x80  },   //  green	F#
-    { 0x00,  0x00,  0xff  },   //  blue		G
-    { 0x20,  0x00,  0xe0  },   //  blue		G#
-    { 0x40,  0x00,  0xc0  },   //  violet	A
-    { 0x60,  0x00,  0xa0  },   //  violet	A#
-    { 0xc0,  0x00,  0x40  },   //  violet	B
-    { 0x00,  0x00,  0x00  }    //  none
+const unsigned char tColorTable[13][3][2] = {
+    //  R			G			   B
+	{ {0xff,0x20},  {0x00,0x00},  {0x00,0x00}  },   //  red		C
+	{ {0xd0,0xd0},  {0x30,0x06},  {0x00,0x00}  },   //  red		C#
+	{ {0xb0,0x16},  {0x50,0x0a},  {0x00,0x00}  },   //  orange	D
+	{ {0xa0,0x14},  {0x60,0x0c},  {0x00,0x00}  },   //  orange	D#
+	{ {0x60,0x0c},  {0xa0,0x14},  {0x00,0x00}  },   //  yellow	E
+	{ {0x00,0x00},  {0xff,0x20},  {0x00,0x00}  },   //  green	F
+	{ {0x00,0x00},  {0x80,0x10},  {0x80,0x10}  },   //  green	F#
+	{ {0x00,0x00},  {0x00,0x00},  {0xff,0x20}  },   //  blue	G
+	{ {0x20,0x04},  {0x00,0x00},  {0xe0,0x1c}  },   //  blue	G#
+	{ {0x40,0x08},  {0x00,0x00},  {0xc0,0x18}  },   //  violet	A
+	{ {0x60,0x0c},  {0x00,0x00},  {0xa0,0x14}  },   //  violet	A#
+	{ {0xc0,0x18},  {0x00,0x00},  {0x40,0x08}  },   //  violet	B
+	{ {0x00,0x00},  {0x00,0x00},  {0x00,0x00}  }    //  none
 };
 //-------------------------------------------------------------------------
 void interrupt lightFullColorLed( void )
 {
     if (TMR2IF == 1) {          // タイマー2の割込み発生か？
 		TMR2IF = 0 ;            // タイマー2割込フラグをリセット
-		tmr2Cnt += 0x10 ;       // 割込み発生の回数をカウントする
+		tmr2Cnt += 0x04 ;       // 割込み発生の回数をカウントする
 
 		//	PWM Full Color LED
-		int doremi = crntNote%12;
-		//unsigned char pwm = (unsigned char)(tmr2Cnt & 0x00ff);
+		uint8_t ledCnt;
+		uint8_t	shifter = (127-midiExp)>>4;	//	0-127 : 7-0
 
-		if ( nowPlaying == false ) doremi = 12;
-		PORTCbits.RC2 = (tmr2Cnt >= tColorTable[doremi][0])? 1:0;
-		PORTCbits.RC1 = (tmr2Cnt >= tColorTable[doremi][1])? 1:0;
-		PORTCbits.RC0 = (tmr2Cnt >= tColorTable[doremi][2])? 1:0;
+		ledCnt = tColorTable[doremi][0][0] - (tColorTable[doremi][0][1]*shifter);
+		PORTCbits.RC2 = (tmr2Cnt >= ledCnt)? 1:0;
+
+		ledCnt = tColorTable[doremi][1][0] - (tColorTable[doremi][1][1]*shifter);
+		PORTCbits.RC1 = (tmr2Cnt >= ledCnt)? 1:0;
+
+		ledCnt = tColorTable[doremi][2][0] - (tColorTable[doremi][2][1]*shifter);
+		PORTCbits.RC0 = (tmr2Cnt >= ledCnt)? 1:0;
 	}
 }
 
@@ -177,6 +190,7 @@ void initCommon( void )
 	midiEventWritePointer = 0;
 	nowPlaying = false;
 	crntNote = 96;
+	doremi = NO_NOTE;
 	lastMod = 0;
 	lastPrt = 0;
 	i2cComErr = 0;
@@ -261,6 +275,7 @@ void initMain(void)
 	event100msec = false;
 	event350msec = false;
 	timerStock = 0;
+	midiExp = 0;
 
 	//	Iitialize other H/W
 	initAllI2cHw();
@@ -451,16 +466,17 @@ void pressureSensor( void )
 	if ( err != 0 ) i2cComErr = err;
 	AnalysePressure_setNewRawPressure(prs);
 	if ( event10msec == true ){
-		uint8_t mdExp;
-		if ( AnalysePressure_catchEventOfPeriodic(&mdExp) == true ){
-			if (( mdExp > 0 ) && ( nowPlaying == false )){
+		if ( AnalysePressure_catchEventOfPeriodic(&midiExp) == true ){
+			if (( midiExp > 0 ) && ( nowPlaying == false )){
 	            setMidiBuffer(0x90,crntNote,0x7f);
 		        nowPlaying = true;
+				doremi = crntNote%12;
 			}
-			setMidiBuffer(0xb0,0x0b,mdExp);
-		    if (( mdExp == 0 ) && ( nowPlaying == true )){
+			setMidiBuffer(0xb0,0x0b,midiExp);
+		    if (( midiExp == 0 ) && ( nowPlaying == true )){
 			    setMidiBuffer(0x90,crntNote,0);
 				nowPlaying = false;
+				doremi = NO_NOTE;
 			}
 		}
     }
@@ -488,7 +504,11 @@ void acceleratorSensor( void )
 
 	err = ADXL345_getAccel(acl);
 	if ( err != 0 ) i2cComErr = err + 40;
+#if MF_OCARINA_TYPE
+	incli = -acl[1]/512;
+#else
 	incli = acl[0]/512;
+#endif
 
 	if ( incli >= MAX_ANGLE ) incli = MAX_ANGLE-1;
 
@@ -534,6 +554,7 @@ void touchSensor( void )
 			if ( nowPlaying == true ){
 				setMidiBuffer(0x90,mdNote,0x7f);
 				setMidiBuffer(0x90,crntNote,0x00);
+				doremi = mdNote%12;
 			}
 			else {
 				setMidiBuffer(0xa0,mdNote,0x01);
@@ -579,12 +600,15 @@ void midiOutDebugCode( void )
 void sendEventToUsb( void )
 {
 	if ( midiEventReadPointer != midiEventWritePointer ){
+		uint8_t	statusByte = midiEvent[midiEventReadPointer][0];
 
 		midiData.Val = 0;   //must set all unused values to 0 so go ahead
-                                    //  and set them all to 0
-		midiData.CableNumber = 1;
-        midiData.CodeIndexNumber = MIDI_CIN_NOTE_ON;
-        midiData.DATA_0 = midiEvent[midiEventReadPointer][0];     // Status Byte
+                            //  and set them all to 0
+
+		midiData.CableNumber = 0;
+		midiData.CodeIndexNumber = statusByte >> 4;
+
+        midiData.DATA_0 = statusByte;								// Status Byte
         midiData.DATA_1 = midiEvent[midiEventReadPointer][1];     // Data Byte 1
         midiData.DATA_2 = midiEvent[midiEventReadPointer][2];     // Data Byte 2
         USBTxHandle = USBTxOnePacket(USB_DEVICE_AUDIO_MIDI_ENDPOINT,(uint8_t*)&midiData,4);
