@@ -21,18 +21,16 @@ static uint8_t interpolateMidiExp( uint8_t realExp );
 
 
 //-------------------------------------------------------------------------
-//static const int MAX_EXP_WIDTH = 200;
-//static const int MIDI_EXP_ITP_STEP = 4;
 #define		MAX_EXP_WIDTH		200
-#define		MIDI_EXP_ITP_STEP	4
+#define		MIDI_EXP_ITP_STEP	16
 
-#define     STABLE_COUNT        200
+#define     STABLE_COUNT        600		//	*5msec
 #define     NOISE_WIDTH         1
 
-#define		START_DEAD_BAND_TIME	300	// *10msec
+#define		START_DEAD_BAND_TIME	400	// *5msec
 
 //-------------------------------------------------------------------------
-static const unsigned char tExpValue[MAX_EXP_WIDTH] = {
+static const unsigned char tExpValue[MAX_EXP_WIDTH+1] = {
 
 0,0,0,0,0,0,0,3,6,9,
 
@@ -55,7 +53,7 @@ static const unsigned char tExpValue[MAX_EXP_WIDTH] = {
 119,119,119,119,120,120,120,121,121,121,
 121,122,122,122,123,123,123,123,124,124,
 124,125,125,125,125,126,126,126,126,127,
-127,127,127,127,127,127,127,127,127,127
+127,127,127,127,127,127,127,127,127,127,127
 };
 
 //-------------------------------------------------------------------------
@@ -108,8 +106,9 @@ bool AnalysePressure_catchEventOfPeriodic( uint8_t* midiValue )
 //-------------------------------------------------------------------------
 static void analyseStandardPressure( int crntPrs )
 {
-	if (( _currentStandard+50 < crntPrs ) ||
-		( _currentStandard-50 > crntPrs )){
+	//	far from current standard (more than 1hPa)
+	if (( _currentStandard+10 < crntPrs ) ||
+		( _currentStandard-10 > crntPrs )){
         _samePressureCounter = 0;		
 		return;
 	}
