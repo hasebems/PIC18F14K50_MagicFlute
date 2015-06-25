@@ -19,7 +19,7 @@
 static const unsigned char PRESSURE_SENSOR_ADDRESS = 0x5d;
 static const unsigned char TOUCH_SENSOR_ADDRESS = 0x5a;
 static const unsigned char LED_BLINKM_ADDRESS = 0x09;
-//static const unsigned char ADC_ADDRESS = 0x48;
+static const unsigned char ADC_ADDRESS = 0x48;
 //static const unsigned char LED_ADA88_ADDRESS = 0x70;
 static const unsigned char ACCEL_SENSOR_ADDRESS = 0x1d;
 
@@ -292,6 +292,7 @@ int readI2cWithCmd( unsigned char adrs, unsigned char cmd, unsigned char* data, 
 //-------------------------------------------------------------------------
 //			LPS331AP (Pressure Sencer : I2c Device)
 //-------------------------------------------------------------------------
+#if USE_I2C_PRESSURE_SENSOR
 //	for Pressure Sencer
 #define		PRES_SNCR_RESOLUTION		0x10
 #define		PRES_SNCR_PWRON				0x20
@@ -332,10 +333,12 @@ int LPS331AP_getPressure( int* retPrs )
 
 	return err;
 }
+#endif
 
 //-------------------------------------------------------------------------
 //			MPR121 (Touch Sencer : I2c Device)
 //-------------------------------------------------------------------------
+#if USE_I2C_TOUCH_SENSOR
 //	for Touch Sencer
 #define		TCH_SNCR_TOUCH_STATUS1		0x00
 #define		TCH_SNCR_TOUCH_STATUS2		0x01
@@ -438,10 +441,12 @@ int MPR121_getTchSwData( unsigned char* retSw )
 
 	return err;
 }
+#endif
 
 //-------------------------------------------------------------------------
 //			ADXL345 (Acceleration Sencer : I2c Device)
 //-------------------------------------------------------------------------
+#if USE_I2C_ACCELERATOR_SENSOR
 //	for Acceleration Sencer
 #define ACCEL_SNCR_PWR_CTRL			0x2d
 #define ACCEL_SNCR_DATA_FORMAT		0x31
@@ -484,6 +489,41 @@ int ADXL345_getAccel( signed short* value )
 
 	return err;
 }
+#endif
+
+//-------------------------------------------------------------------------
+//			ADS1015 (ADC Sencer : I2c Device)
+//-------------------------------------------------------------------------
+#if USE_I2C_ADC     //	for ADC Sencer
+//-------------------------------------------------------------------------
+void setNext( int adNum )
+{
+	unsigned char buf[2];
+	
+	buf[0] = 0xc3 + (adNum << 4);
+	buf[1] = 0x83;
+
+    writeI2cWithCmdAndMultiData(ADC_ADDRESS,0x01,buf,2);
+}
+//-------------------------------------------------------------------------
+void ADS1015_init( void )
+{
+	//	Init Parameter
+	setNext(0);
+}
+//-------------------------------------------------------------------------
+int ADS1015_getVolume( int number, unsigned char* reg )
+{
+    int err;								
+
+    err = readI2cWithCmd(ADC_ADDRESS,0x00,reg,1);   // This is the register we wish to read from
+	
+    if ( number >= 2 ) number = 2;
+    setNext(number);
+	
+	return 0;
+}
+#endif
 
 //-------------------------------------------------------------------------
 //			BlinkM ( Full Color LED : I2c Device)
