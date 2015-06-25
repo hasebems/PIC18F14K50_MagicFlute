@@ -159,8 +159,8 @@ const USB_DEVICE_DESCRIPTOR device_dsc=
     0x00,                   // Subclass code
     0x00,                   // Protocol code
     USB_EP0_BUFF_SIZE,          // Max packet size for EP0, see usb_config.h
-    0x22ea,                 // Vendor ID
-    0x003c,                 // Product ID: Audio MIDI example
+    0x04D8,                 // Vendor ID: Microchip
+    0xF2F4,                 // Product ID: 6/23/2015 distributed by Microchip as MagicFlute
     0x0002,                 // Device release number in BCD format
     0x01,                   // Manufacturer string index
     0x02,                   // Product string index
