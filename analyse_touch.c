@@ -21,7 +21,7 @@ static int         _deadBand;
 
 //-------------------------------------------------------------------------
 //  Adjustable Value
-#define     DEADBAND_POINT_TIME     7      //  ×10[msec]
+#define     DEADBAND_POINT_TIME     5      //  ×10[msec]
 //-------------------------------------------------------------------------
 #define     OCT_SW      0x30
 #define     CRO_SW      0x08
@@ -100,7 +100,7 @@ bool AnalyseTouch_catchEventOfPeriodic( uint8_t* midiValue, long crntTime )
 
             if ( diff >= 12 ){
                 _startTime = crntTime;
-                _deadBand = 4;
+                _deadBand = 3;
                 if ((_crntTouch^_lastTouch)&_crntTouch){
                     //if (_dbg) _dbg->printf("<<Set Tap>>\n");
                     _tapTouch = _lastTouch|TAP_FLAG;
