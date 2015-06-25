@@ -88,10 +88,14 @@
 #pragma config EBTRB = OFF      // Boot Block Table Read Protection bit (Boot block not protected from table reads executed in other blocks)
 
 
-#define	SW1			PORTCbits.RC7
-#define	SW2			PORTCbits.RC6
-#define	LED			PORTCbits.RC5
-#define	LED2		PORTCbits.RC4
+#define	SW1			PORTCbits.RC7   //  Switch
+#define	OUT2		PORTCbits.RC6
+#define	OUT1		PORTCbits.RC5   //  Heartbeat
+#define	DIPSW2		PORTCbits.RC4
+#define DIPSW1      PORTCbits.RC3   //  1:Ocarina
+#define LEDR        PORTCbits.RC2
+#define LEDG        PORTCbits.RC1
+#define LEDB        PORTCbits.RC0
 
 /*----------------------------------------------------------------------------*/
 //
@@ -112,7 +116,6 @@ static USB_AUDIO_MIDI_EVENT_PACKET midiData @ DEVCE_AUDIO_MIDI_EVENT_DATA_BUFFER
 static USB_HANDLE USBTxHandle;
 static USB_HANDLE USBRxHandle;
 
-static uint8_t pitch;
 static bool sentNoteOff;
 
 #define	MIDI_BUF_MAX		8
@@ -126,6 +129,7 @@ static uint8_t crntNote;
 static uint8_t lastMod, lastPrt;
 static uint8_t midiExp;
 static int doremi;
+static uint8_t adcCnt;
 
 static long			counter10msec;	//	one loop 243 days
 static bool	event5msec;
@@ -170,13 +174,13 @@ void interrupt lightFullColorLed( void )
 		//	PWM Full Color LED
 		uint16_t ledCnt;
 		ledCnt = ((uint16_t)tColorTable[doremi][0]*midiExp)>>4;
-		PORTCbits.RC2 = ((uint16_t)tmr2Cnt >= ledCnt)? 1:0;
+		LEDR = ((uint16_t)tmr2Cnt >= ledCnt)? 1:0;
 
 		ledCnt = ((uint16_t)tColorTable[doremi][1]*midiExp)>>4;
-		PORTCbits.RC1 = ((uint16_t)tmr2Cnt >= ledCnt)? 1:0;
+		LEDG = ((uint16_t)tmr2Cnt >= ledCnt)? 1:0;
 
 		ledCnt = ((uint16_t)tColorTable[doremi][2]*midiExp)>>4;
-		PORTCbits.RC0 = ((uint16_t)tmr2Cnt >= ledCnt)? 1:0;
+		LEDB = ((uint16_t)tmr2Cnt >= ledCnt)? 1:0;
 	}
 }
 
@@ -196,6 +200,7 @@ void initCommon( void )
 	lastMod = 0;
 	lastPrt = 0;
 	i2cComErr = 0;
+    adcCnt = 0;
 
 	AnalysePressure_Init();
 	AnalyseTouch_init();
@@ -219,6 +224,9 @@ void initAllI2cHw( void )
 #if USE_I2C_ACCELERATOR_SENSOR
 	ADXL345_init();
 #endif
+#if USE_I2C_ADC
+    ADS1015_init();
+#endif
 #if USE_I2C_BLINKM
 	BlinkM_init();
 #endif
@@ -237,8 +245,12 @@ void initMain(void)
 	//    ADCON1  =	0b00001111;
     TRISA   =	0b00000000;			//D-,D+
     TRISB   =	0b01010000;			//I2C master mode
-    TRISC   =	0b11000000;			//SW1
-
+#if 0
+    TRISC   =	0b10011000;			//SW1, DIPSW1, DIPSW2
+#else
+    TRISC   =	0b11001000;			// for PROTO6
+#endif
+    
 	ANSEL	=	0b00000000;			//not use ADC. use PORT
 	ANSELH	=	0b00000000;
 
@@ -252,8 +264,8 @@ void initMain(void)
 
 	TMR0H	= 0;					//	set TImer0
 	TMR0L	= 0;
-	LED		= 0;
-	LED2	= 0;
+	OUT1	= 0;
+	OUT2	= 0;
 
 	// Interrupt by TIMER2
 	tmr2Cnt = 0 ;					// PWM Counter clear
@@ -297,8 +309,6 @@ void USBMIDIInitialize()
 {
     USBTxHandle = NULL;
     USBRxHandle = NULL;
-
-    pitch = 0x3C;
     sentNoteOff = true;
 
 	initCommon();
@@ -428,19 +438,16 @@ void testNoteEvent( void )
 	/* If the user button is pressed... */
     if ( SW1 == 0 ){    //(BUTTON_IsPressed(BUTTON_DEVICE_AUDIO_MIDI) == true
         if ( sentNoteOff == true ){
-			setMidiBuffer( 0x90, ++pitch, 0x7f );
+			setMidiBuffer( 0x90, 0x24+MF_FIRM_VERSION, 0x7f );
             sentNoteOff = false;
 #if USE_I2C_BLINKM
-			BlinkM_changeColor(pitch%12);
+			BlinkM_changeColor(0);
 #endif
 		}
     }
     else {
         if ( sentNoteOff == false ){
-			setMidiBuffer( 0x90, pitch, 0x00 );
-            if ( pitch == 0x49 ){
-				pitch = 0x3C;
-            }
+			setMidiBuffer( 0x90, 0x24+MF_FIRM_VERSION, 0x00 );
             sentNoteOff = true;
 #if USE_I2C_BLINKM
 			BlinkM_changeColor(12);
@@ -449,6 +456,7 @@ void testNoteEvent( void )
     }
 }
 /*----------------------------------------------------------------------------*/
+#if USE_I2C_PRESSURE_SENSOR
 void pressureSensor( void )
 {
 	//  Pressure Sensor
@@ -483,22 +491,24 @@ void pressureSensor( void )
 		}
     }
 }
+#endif
 /*----------------------------------------------------------------------------*/
 #define		MAX_ANGLE		32
-const int tCnvModDpt[MAX_ANGLE] = {
+const uint8_t tCnvModDpt[MAX_ANGLE] = {
 	0,	0,	0,	0,	0,	0,	0,	0,
 	0,	0,	0,	0,	1,	1,	2,	2,
 	3,	4,	5,	6,	7,	8,	9,	10,
 	12,	14,	16,	19,	22,	25,	28,	31,
 };
 //-------------------------------------------------------------------------
-const int tCnvPrtDpt[MAX_ANGLE] = {
+const uint8_t tCnvPrtDpt[MAX_ANGLE] = {
 	0,	0,	0,	0,	0,	0,	0,	0,
 	10,	20,	30,	40,	50,	60,	70,	70,
 	80,	80,	80,	80,	90,	90,	90,	90,
 	100,100,100,100,110,110,110,110,
 };
 //-------------------------------------------------------------------------
+#if USE_I2C_ACCELERATOR_SENSOR
 void acceleratorSensor( void )
 {
 	signed short acl[3] = { 0,0,0 };
@@ -506,11 +516,12 @@ void acceleratorSensor( void )
 
 	err = ADXL345_getAccel(acl);
 	if ( err != 0 ) i2cComErr = err + 40;
-#if MF_OCARINA_TYPE
-	incli = -acl[1]/512;
-#else
-	incli = acl[0]/512;
-#endif
+    if ( DIPSW1 == 1 ){ //  Ocarina
+    	incli = -acl[1]/512;
+    }
+    else {              //  Recorder
+    	incli = acl[0]/512;
+    }
 
 	if ( incli >= MAX_ANGLE ) incli = MAX_ANGLE-1;
 
@@ -541,7 +552,49 @@ void acceleratorSensor( void )
 		setMidiBuffer(0xb0,0x05,lastPrt);
 	}
 }
+#endif
 /*----------------------------------------------------------------------------*/
+#if USE_I2C_ADC
+void adConverter( void )
+{
+    uint8_t rawData;
+    uint8_t adcNum = adcCnt;
+
+    adcCnt++;
+    if ( adcCnt > 2 ) adcCnt = 0;
+    ADS1015_getVolume( adcCnt, &rawData );
+ 
+    switch (adcNum){
+        case 0:{    //  Expression
+            uint8_t crntExp = rawData & 0x7f;
+            if ( midiExp != crntExp ){
+                if (( crntExp > 0 ) && ( nowPlaying == false )){
+                    setMidiBuffer(0x90,crntNote,0x7f);
+                    nowPlaying = true;
+                    doremi = crntNote%12;
+                }
+                setMidiBuffer(0xb0,0x0b,crntExp);
+                if (( crntExp == 0 ) && ( nowPlaying == true )){
+                    setMidiBuffer(0x90,crntNote,0);
+                    nowPlaying = false;
+                    doremi = NO_NOTE;
+                }
+                midiExp = crntExp;
+            }
+            break;
+        }
+        case 1:{
+            break;
+        }
+        case 2:{
+            break;
+        }
+        default: break;
+    }
+}
+#endif
+/*----------------------------------------------------------------------------*/
+#if USE_I2C_TOUCH_SENSOR
 void touchSensor( void )
 {
 	uint8_t	tch;
@@ -566,7 +619,7 @@ void touchSensor( void )
 		}
 	}
 }
-
+#endif
 /*----------------------------------------------------------------------------*/
 //
 //      Debug by using MIDI / extra LED
@@ -575,15 +628,15 @@ void touchSensor( void )
 void midiOutDebugCode( void )
 {
 	//	Heartbeat
-	LED = ((counter10msec & 0x001e) == 0x0000)? 1:0;		//	350msec
+	OUT1 = ((counter10msec & 0x001e) == 0x0000)? 1:0;		//	350msec
 
 	//	Debug by using LED
 	if ( i2cErr == true ){
 		if ( event100msec == true ){
-			LED2 = 0;
+			OUT2 = 0;
 			i2cErr = false;
 		}
-		else LED2 = 1;
+		else OUT2 = 1;
 	}
 
 	//	Debug by using USB MIDI
@@ -674,6 +727,10 @@ void main(void)
 		//  accelerator sensor
 #if USE_I2C_ACCELERATOR_SENSOR
 		acceleratorSensor();
+#endif
+
+#if USE_I2C_ADC
+        adConverter();
 #endif
 		//	Debug by using MIDI
 		midiOutDebugCode();
