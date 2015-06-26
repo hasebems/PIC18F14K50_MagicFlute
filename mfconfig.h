@@ -15,7 +15,7 @@ extern "C" {
 #define     MF_FIRM_VERSION                 0   //  start from 0    
 
 #define		USE_I2C_PRESSURE_SENSOR			0
-#define		USE_I2C_ACCELERATOR_SENSOR		1
+#define		USE_I2C_ACCELERATOR_SENSOR		0
 #define		USE_I2C_TOUCH_SENSOR			1
 #define		USE_I2C_ADC                     1
 #define		USE_I2C_BLINKM                  0

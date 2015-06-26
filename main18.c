@@ -558,15 +558,26 @@ void acceleratorSensor( void )
 void adConverter( void )
 {
     uint8_t rawData;
-    uint8_t adcNum = adcCnt;
+    int adjustData;
+    int err;
 
-    adcCnt++;
-    if ( adcCnt > 2 ) adcCnt = 0;
-    ADS1015_getVolume( adcCnt, &rawData );
- 
-    switch (adcNum){
+    if ( event10msec == false ) return;
+    
+    err = ADS1015_getVolume( &rawData );
+	if ( err != 0 ) i2cComErr = err;
+    
+    //  adjust to 0...127
+    if ( rawData > 0x80 ) rawData = 0;
+    adjustData = (int)rawData - 4;
+    if ( adjustData < 0 ) adjustData = 0;
+    
+    adjustData *= 3;
+    adjustData >>= 1;   //  3/2
+    if ( adjustData > 127 ) adjustData = 127;
+
+    switch (adcCnt){
         case 0:{    //  Expression
-            uint8_t crntExp = rawData & 0x7f;
+            uint8_t crntExp = (uint8_t)adjustData;
             if ( midiExp != crntExp ){
                 if (( crntExp > 0 ) && ( nowPlaying == false )){
                     setMidiBuffer(0x90,crntNote,0x7f);
@@ -584,13 +595,27 @@ void adConverter( void )
             break;
         }
         case 1:{
+            uint8_t modVal = (uint8_t)adjustData >> 1;
+        	if ( modVal != lastMod ){
+            	lastMod = modVal;
+                setMidiBuffer(0xb0,0x01,lastMod);
+        	}
             break;
         }
         case 2:{
+            uint8_t prtVal = (uint8_t)adjustData;
+        	if ( prtVal != lastPrt ){
+                lastPrt = prtVal;
+        		setMidiBuffer(0xb0,0x05,lastPrt);
+            }
             break;
         }
         default: break;
     }
+
+    adcCnt++;
+    if ( adcCnt > 2 ) adcCnt = 0;
+    ADS1015_setNext( adcCnt );
 }
 #endif
 /*----------------------------------------------------------------------------*/
