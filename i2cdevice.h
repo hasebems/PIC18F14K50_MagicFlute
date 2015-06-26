@@ -26,7 +26,8 @@ void ADXL345_init( void );
 int ADXL345_getAccel( signed short* value );
 
 void ADS1015_init( void );
-int ADS1015_getVolume( int number, unsigned char* reg );
+void ADS1015_setNext( int adNum );
+int ADS1015_getVolume( unsigned char* reg );
 
 void BlinkM_init( void );
 int BlinkM_changeColor( unsigned char note );

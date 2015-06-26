@@ -496,7 +496,7 @@ int ADXL345_getAccel( signed short* value )
 //-------------------------------------------------------------------------
 #if USE_I2C_ADC     //	for ADC Sencer
 //-------------------------------------------------------------------------
-void setNext( int adNum )
+void ADS1015_setNext( int adNum )
 {
 	unsigned char buf[2];
 	
@@ -507,21 +507,13 @@ void setNext( int adNum )
 }
 //-------------------------------------------------------------------------
 void ADS1015_init( void )
-{
-	//	Init Parameter
-	setNext(0);
+{	//	Init Parameter
+	ADS1015_setNext(0);
 }
 //-------------------------------------------------------------------------
-int ADS1015_getVolume( int number, unsigned char* reg )
+int ADS1015_getVolume( unsigned char* reg )
 {
-    int err;								
-
-    err = readI2cWithCmd(ADC_ADDRESS,0x00,reg,1);   // This is the register we wish to read from
-	
-    if ( number >= 2 ) number = 2;
-    setNext(number);
-	
-	return 0;
+    return readI2cWithCmd(ADC_ADDRESS,0x00,reg,1);   // This is the register we wish to read from
 }
 #endif
 
