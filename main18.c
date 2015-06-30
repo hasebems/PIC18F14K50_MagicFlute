@@ -568,12 +568,14 @@ void adConverter( void )
     
     //  adjust to 0...127
     if ( rawData > 0x80 ) rawData = 0;
-    adjustData = (int)rawData - 4;
+    adjustData = (int)rawData - 2;
     if ( adjustData < 0 ) adjustData = 0;
-    
-    adjustData *= 3;
-    adjustData >>= 1;   //  3/2
+    adjustData *= 4;
+    adjustData /= 3;   //  4/3
     if ( adjustData > 127 ) adjustData = 127;
+
+    //  Invert
+    adjustData = 127 - adjustData;
 
     switch (adcCnt){
         case 0:{    //  Expression
