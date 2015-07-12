@@ -146,7 +146,7 @@ static uint16_t timerStock;
 static uint8_t	tmr2Cnt;
 
 static int i2cComErr;
-
+static bool usbEnable;
 
 /*----------------------------------------------------------------------------*/
 //
@@ -213,6 +213,7 @@ void initCommon( void )
 	lastPrt = 0;
 	i2cComErr = 0;
     adcCnt = 0;
+    usbEnable = true;
 
 	AnalysePressure_Init();
 	AnalyseTouch_init();
@@ -442,11 +443,13 @@ void generateCounter( void )
 void setMidiBuffer( uint8_t status, uint8_t dt1, uint8_t dt2 )
 {
     //  for USB MIDI
-	midiEvent[midiEventWritePointer][0] = status;
-	midiEvent[midiEventWritePointer][1] = dt1;
-	midiEvent[midiEventWritePointer][2] = dt2;
-	midiEventWritePointer++;
-	midiEventWritePointer &= MIDI_BUF_MAX_MASK;
+    if ( usbEnable == true ){
+    	midiEvent[midiEventWritePointer][0] = status;
+        midiEvent[midiEventWritePointer][1] = dt1;
+    	midiEvent[midiEventWritePointer][2] = dt2;
+        midiEventWritePointer++;
+        midiEventWritePointer &= MIDI_BUF_MAX_MASK;
+    }
 
     //  for Serial MIDI
     if ( status != runningStatus ){
@@ -714,7 +717,7 @@ void midiOutDebugCode( void )
 void sendEventToMIDI( void )
 {
     //  USB MIDI
-	if ( midiEventReadPointer != midiEventWritePointer ){
+	if (( midiEventReadPointer != midiEventWritePointer ) && !USBHandleBusy(USBTxHandle) ){
 		uint8_t	statusByte = midiEvent[midiEventReadPointer][0];
 
 		midiData.Val = 0;   //must set all unused values to 0 so go ahead
@@ -756,27 +759,19 @@ void main(void)
 		generateCounter();
 
 		//	USB
+        usbEnable = false;
 		USBDeviceTasks();
-        if ( USBGetDeviceState() < CONFIGURED_STATE ){
-            /* Jump back to the top of the while loop. */
-            continue;
+        if ( USBGetDeviceState() >= CONFIGURED_STATE ){
+            if ( USBIsDeviceSuspended() != true ){
+                if ( !USBHandleBusy(USBRxHandle) ){
+                    //We have received a MIDI packet from the host, process it and then
+                    //  prepare to receive the next packet
+            	    //Get ready for next packet (this will overwrite the old data)
+                    USBRxHandle = USBRxOnePacket(USB_DEVICE_AUDIO_MIDI_ENDPOINT,(uint8_t*)&ReceivedDataBuffer,64);
+                }
+                usbEnable = true;
+            }
         }
-        if ( USBIsDeviceSuspended() == true ){
-            /* Jump back to the top of the while loop. */
-            continue;
-        }
-		if ( USBHandleBusy(USBTxHandle) == true ){
-			continue;
-		}
-	    if ( !USBHandleBusy(USBRxHandle) ){
-		    //We have received a MIDI packet from the host, process it and then
-			//  prepare to receive the next packet
-
-	        //INSERT MIDI PROCESSING CODE HERE
-
-		    //Get ready for next packet (this will overwrite the old data)
-			USBRxHandle = USBRxOnePacket(USB_DEVICE_AUDIO_MIDI_ENDPOINT,(uint8_t*)&ReceivedDataBuffer,64);
-		}
 
 		//	Test by Tact Swtich
 		testNoteEvent();
