@@ -102,8 +102,12 @@
 //      Macros
 //
 /*----------------------------------------------------------------------------*/
-#define	NO_NOTE		12
+#define SERIAL_MIDI_BUFF    32
 
+#define	MIDI_BUF_MAX		8
+#define	MIDI_BUF_MAX_MASK	0x07;
+
+#define	NO_NOTE		12
 
 /*----------------------------------------------------------------------------*/
 //
@@ -116,10 +120,13 @@ static USB_AUDIO_MIDI_EVENT_PACKET midiData @ DEVCE_AUDIO_MIDI_EVENT_DATA_BUFFER
 static USB_HANDLE USBTxHandle;
 static USB_HANDLE USBRxHandle;
 
+static uint8_t serialMidiBuffer[SERIAL_MIDI_BUFF];
+static int smbReadPtr;
+static int smbWritePtr;
+static uint8_t runningStatus;
+
 static bool sentNoteOff;
 
-#define	MIDI_BUF_MAX		8
-#define	MIDI_BUF_MAX_MASK	0x07;
 static uint8_t	midiEvent[MIDI_BUF_MAX][3];
 static int	midiEventReadPointer;
 static int	midiEventWritePointer;
@@ -187,13 +194,18 @@ void interrupt lightFullColorLed( void )
 
 /*----------------------------------------------------------------------------*/
 //
-//      Common Initialize
+//      Common Initialize ( Power On / USB reset )
 //
 /*----------------------------------------------------------------------------*/
 void initCommon( void )
 {
 	midiEventReadPointer = 0;
 	midiEventWritePointer = 0;
+
+    smbReadPtr = 0;
+    smbWritePtr = 0;
+    runningStatus = 0x00;
+
 	nowPlaying = false;
 	crntNote = 96;
 	doremi = NO_NOTE;
@@ -234,7 +246,7 @@ void initAllI2cHw( void )
 
 /*----------------------------------------------------------------------------*/
 //
-//      Initialize
+//      Initialize only for Power On
 //
 /*----------------------------------------------------------------------------*/
 void initMain(void)
@@ -242,27 +254,28 @@ void initMain(void)
 	int		i;
 
 	//	PIC H/W registor
+	INTCON	=	0b00000000;         //  Disable all Interrupt
+
+    //  Set Port
 	//    ADCON1  =	0b00001111;
     TRISA   =	0b00000000;			//D-,D+
-    TRISB   =	0b01010000;			//I2C master mode
-#if 0
-    TRISC   =	0b10011000;			//SW1, DIPSW1, DIPSW2
+    TRISB   =	0b11110000;			//I2C master mode, UART Tx/Rx(set INPUT)
+#if 1
+    TRISC   =	0b10011000;			//SW1, DIPSW1, DIPSW2 for PROTO8
 #else
     TRISC   =	0b11001000;			// for PROTO6
 #endif
-    
 	ANSEL	=	0b00000000;			//not use ADC. use PORT
 	ANSELH	=	0b00000000;
-
 	T0CON	=	0b10010111;			// 1:256 of System Clock
 									//	 48/4MHz -> 46875Hz 21.333..usec
-	INTCON	=	0b00000000;
 
 //    LATA    =	0b00000000;
 //    LATB    =	0b00000000;
 //    LATC    =	0b01000000;
 
-	TMR0H	= 0;					//	set TImer0
+    //	TIMER0
+	TMR0H	= 0;
 	TMR0L	= 0;
 	OUT1	= 0;
 	OUT2	= 0;
@@ -274,9 +287,12 @@ void initMain(void)
 	TMR2   = 0 ;					// Initialize
 	TMR2IF = 0 ;					// clear TMR2 Interrupt flag
 	TMR2IE = 1 ;					// enable TMR2 interrupt
-	PEIE   = 1 ;					// enable peripheral　interrupt
-	GIE    = 1 ;					// enable all interrupt
 
+    //  UART
+    RCSTA   = 0b10010000;           // enable UART Tx & Rx
+    TXSTA   = 0b00100000;           // 8bit Asynclonous Tx/Rx
+    BAUDCON = 0b00000000;           // HI-16bit baudrate=disable
+    SPBRG   = 23;                   // 31250[bps]
 
 	//	Initialize Variables only when the power turns on
 	for ( i=0; i<MIDI_BUF_MAX; i++ ){
@@ -296,6 +312,10 @@ void initMain(void)
 
 	//	common Initialize
 	initCommon();
+
+    //  Enable All Interrupt
+	PEIE   = 1 ;					// enable peripheral　interrupt
+	GIE    = 1 ;					// enable all interrupt
 }
 
 /*----------------------------------------------------------------------------*/
@@ -421,11 +441,23 @@ void generateCounter( void )
 /*----------------------------------------------------------------------------*/
 void setMidiBuffer( uint8_t status, uint8_t dt1, uint8_t dt2 )
 {
+    //  for USB MIDI
 	midiEvent[midiEventWritePointer][0] = status;
 	midiEvent[midiEventWritePointer][1] = dt1;
 	midiEvent[midiEventWritePointer][2] = dt2;
 	midiEventWritePointer++;
 	midiEventWritePointer &= MIDI_BUF_MAX_MASK;
+
+    //  for Serial MIDI
+    if ( status != runningStatus ){
+        runningStatus = status;
+        serialMidiBuffer[smbWritePtr++] = status;
+      if ( smbWritePtr >= SERIAL_MIDI_BUFF ){ smbWritePtr -= SERIAL_MIDI_BUFF;}
+    }
+    serialMidiBuffer[smbWritePtr++] = dt1;
+    if ( smbWritePtr >= SERIAL_MIDI_BUFF ){ smbWritePtr -= SERIAL_MIDI_BUFF;}
+    serialMidiBuffer[smbWritePtr++] = dt2;
+    if ( smbWritePtr >= SERIAL_MIDI_BUFF ){ smbWritePtr -= SERIAL_MIDI_BUFF;}
 }
 
 /*----------------------------------------------------------------------------*/
@@ -435,7 +467,7 @@ void setMidiBuffer( uint8_t status, uint8_t dt1, uint8_t dt2 )
 /*----------------------------------------------------------------------------*/
 void testNoteEvent( void )
 {
-	/* If the user button is pressed... */
+	/* If a button is pressed... */
     if ( SW1 == 0 ){    //(BUTTON_IsPressed(BUTTON_DEVICE_AUDIO_MIDI) == true
         if ( sentNoteOff == true ){
 			setMidiBuffer( 0x90, 0x24+MF_FIRM_VERSION, 0x7f );
@@ -676,11 +708,12 @@ void midiOutDebugCode( void )
 
 /*----------------------------------------------------------------------------*/
 //
-//      Send one event to USB ( just only one event for each time )
+//      Send one event to MIDI ( just only one event for each time )
 //
 /*----------------------------------------------------------------------------*/
-void sendEventToUsb( void )
+void sendEventToMIDI( void )
 {
+    //  USB MIDI
 	if ( midiEventReadPointer != midiEventWritePointer ){
 		uint8_t	statusByte = midiEvent[midiEventReadPointer][0];
 
@@ -698,6 +731,13 @@ void sendEventToUsb( void )
 		midiEventReadPointer++;
 		midiEventReadPointer &= MIDI_BUF_MAX_MASK;
 	}
+    //  Serial MIDI
+    if ( smbReadPtr != smbWritePtr ){
+        if (PIR1bits.TXIF){  // Tx is already finished
+            TXREG = serialMidiBuffer[smbReadPtr++];
+            if ( smbReadPtr >= SERIAL_MIDI_BUFF ){ smbReadPtr -= SERIAL_MIDI_BUFF; }
+        }
+    }
 }
 
 /*----------------------------------------------------------------------------*/
@@ -738,7 +778,7 @@ void main(void)
 			USBRxHandle = USBRxOnePacket(USB_DEVICE_AUDIO_MIDI_ENDPOINT,(uint8_t*)&ReceivedDataBuffer,64);
 		}
 
-		//	Test with Tact Swtich
+		//	Test by Tact Swtich
 		testNoteEvent();
 
 		//  Touch Sensor
@@ -762,8 +802,8 @@ void main(void)
 		//	Debug by using MIDI
 		midiOutDebugCode();
 
-		//	USB MIDI Out
-		sendEventToUsb();
+		//	MIDI Out
+		sendEventToMIDI();
 	}
 
 	return;
