@@ -261,11 +261,7 @@ void initMain(void)
 	//    ADCON1  =	0b00001111;
     TRISA   =	0b00000000;			//D-,D+
     TRISB   =	0b11110000;			//I2C master mode, UART Tx/Rx(set INPUT)
-#if 1
     TRISC   =	0b10011000;			//SW1, DIPSW1, DIPSW2 for PROTO8
-#else
-    TRISC   =	0b11001000;			// for PROTO6
-#endif
 	ANSEL	=	0b00000000;			//not use ADC. use PORT
 	ANSELH	=	0b00000000;
 	T0CON	=	0b10010111;			// 1:256 of System Clock
@@ -512,12 +508,12 @@ void pressureSensor( void )
 	AnalysePressure_setNewRawPressure(prs);
 	if ( event5msec == true ){
 		if ( AnalysePressure_catchEventOfPeriodic(&midiExp) == true ){
+			setMidiBuffer(0xb0,0x0b,midiExp);
 			if (( midiExp > 0 ) && ( nowPlaying == false )){
 	            setMidiBuffer(0x90,crntNote,0x7f);
 		        nowPlaying = true;
 				doremi = crntNote%12;
 			}
-			setMidiBuffer(0xb0,0x0b,midiExp);
 		    if (( midiExp == 0 ) && ( nowPlaying == true )){
 			    setMidiBuffer(0x90,crntNote,0);
 				nowPlaying = false;
