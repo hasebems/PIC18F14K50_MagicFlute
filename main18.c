@@ -142,6 +142,7 @@ static long			counter10msec;	//	one loop 243 days
 static bool	event5msec;
 static bool	event10msec;
 static bool event100msec;
+static bool event1_4sec;
 static uint16_t timerStock;
 static uint8_t	tmr2Cnt;
 
@@ -301,6 +302,7 @@ void initMain(void)
 	event5msec = false;
 	event10msec = false;
 	event100msec = false;
+	event1_4sec = false;
 	timerStock = 0;
 	midiExp = 0;
 
@@ -413,7 +415,7 @@ void generateCounter( void )
 		//	5msec Event ( precise time : 5.46msec )
 		event5msec = true;
 	}
-	else event10msec = false;
+	else event5msec = false;
 
 	if (( tmr & 0x0100 ) && !( timerStock & 0x0100 )){
 		//	10msec Event ( precise time : 10.92msec )
@@ -427,6 +429,12 @@ void generateCounter( void )
 		event100msec = true;
 	}
 	else event100msec = false;
+
+	if (( tmr & 0x8000 ) && !( timerStock & 0x8000 )){
+		//	1.4sec Event ( precise time : 1392msec )
+		event1_4sec = true;
+	}
+	else event1_4sec = false;
 
 	timerStock = tmr;
 }
@@ -494,17 +502,18 @@ void pressureSensor( void )
 
 	int	prs, err;
 
+	err = LPS331AP_getPressure(&prs);
+	if ( err != 0 ) i2cComErr = err;
+
 #if 0	//	for debug
-	if ( counter10msec & 0x00000020 ){
-		//	350msec
-		setMidiBuffer(0xb0,0x10,prs/10000);
-		setMidiBuffer(0xb0,0x11,(prs%10000)/100);
-		setMidiBuffer(0xb0,0x12,(prs%100));
+	if ( event1_4sec == true ){
+		//	1.4sec
+		setMidiBuffer(0xb0,0x11,prs/10000);
+		setMidiBuffer(0xb0,0x12,(prs%10000)/100);
+		setMidiBuffer(0xb0,0x13,(prs%100));
 	}
 #endif
 
-	err = LPS331AP_getPressure(&prs);
-	if ( err != 0 ) i2cComErr = err;
 	AnalysePressure_setNewRawPressure(prs);
 	if ( event5msec == true ){
 		if ( AnalysePressure_catchEventOfPeriodic(&midiExp) == true ){

@@ -352,8 +352,8 @@ int LPS331AP_getPressure( int* retPrs )
 #define 	TCH_SNCR_EPROXTTH			0x59
 
 // Threshold defaults
-#define		E_THR_T      0x02	// Electrode touch threshold
-#define		E_THR_R      0x01	// Electrode release threshold
+#define		E_THR_T      0x0c	// Electrode touch threshold
+#define		E_THR_R      0x0a	// Electrode release threshold
 #define		PROX_THR_T   0x02	// Prox touch threshold
 #define		PROX_THR_R   0x02	// Prox release threshold
 //-------------------------------------------------------------------------
